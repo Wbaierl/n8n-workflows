@@ -1,0 +1,584 @@
+{
+  "name": "Termine → Confluence Panel",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-e001-4000-8000-000000000001",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 400]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "36347c76-2802-80e0-b5c1-cb867c9cc3ce",
+          "mode": "list",
+          "cachedResultName": "DB Termine",
+          "cachedResultUrl": "https://www.notion.so/36347c76280280e0b5c1cb867c9cc3ce"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "a1b2c3d4-e002-4000-8000-000000000002",
+      "name": "Notion: Alle Termine holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [384, 400],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Notion v2.2: Properties als property_feldname\n// Termine aufteilen in NEU und ABGELAUFEN, dann x Kunden flatten\nvar items = $input.all();\nvar flat = [];\nvar now = new Date();\nvar cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n  var notionPageId = props.id;\n\n  // Datum (Date-Feld mit Uhrzeit)\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start) {\n    datumRaw = datumObj.start;\n  } else if (typeof datumObj === 'string' && datumObj.length >= 10) {\n    datumRaw = datumObj;\n  }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw);\n\n  // ConfluenceSync Checkbox\n  var confluenceSync = props.property_confluence_sync === true\n    || props.property_confluencesync === true;\n\n  // Typ bestimmen\n  var typ = null;\n  if (!confluenceSync && terminDate >= cutoff) {\n    typ = 'NEU';\n  } else if (confluenceSync && terminDate < cutoff) {\n    typ = 'ABGELAUFEN';\n  }\n  if (!typ) continue;\n\n  // Felder lesen\n  var titel = props.property_titel || props.name || 'Kein Titel';\n  var ort = props.property_ort || '';\n\n  // Datum aus ISO-String parsen (kein Timezone-Problem)\n  var datumIso = datumRaw.substring(0, 10);\n  var dp = datumIso.split('-');\n  var datumStr = dp[2] + '.' + dp[1] + '.' + dp[0];\n\n  // Uhrzeit aus ISO-String\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) {\n    uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6);\n  }\n\n  // Kunden Relation (Array von Notion Page IDs)\n  var kundenRaw = props.property_kunden || [];\n  var kundenIds = Array.isArray(kundenRaw) ? kundenRaw : [kundenRaw];\n  if (kundenIds.length === 0) continue;\n\n  // ConfluenceTerminIDs (Umlaut-Normalisierung: TerminIDs → termin_i_ds)\n  var confluenceTerminIDs = props.property_confluence_termin_i_ds\n    || props.property_confluenceterminids\n    || props.property_confluence_termin_ids\n    || '';\n\n  // Row ID = notionPageId ohne Bindestriche\n  var rowId = notionPageId.replace(/-/g, '');\n\n  for (var j = 0; j < kundenIds.length; j++) {\n    var kundePageId = kundenIds[j];\n    if (!kundePageId) continue;\n    flat.push({\n      json: {\n        notionPageId: notionPageId,\n        titel: titel,\n        ort: ort,\n        datumStr: datumStr,\n        uhrzeitStr: uhrzeitStr,\n        datumIso: datumIso,\n        kundePageId: kundePageId,\n        confluenceTerminIDs: confluenceTerminIDs,\n        rowId: rowId,\n        typ: typ\n      }\n    });\n  }\n}\n\nreturn flat;"
+      },
+      "id": "a1b2c3d4-e003-4000-8000-000000000003",
+      "name": "Code: Termine aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [608, 400]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "a1b2c3d4-e004-4000-8000-000000000004",
+      "name": "Loop: Ein Termin-Kunde Paar",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [832, 400]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.kundePageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "a1b2c3d4-e005-4000-8000-000000000005",
+      "name": "Notion: Kundendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1056, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m01",
+              "name": "notionPageId",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.notionPageId }}",
+              "type": "string"
+            },
+            {
+              "id": "m02",
+              "name": "titel",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.titel }}",
+              "type": "string"
+            },
+            {
+              "id": "m03",
+              "name": "ort",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.ort }}",
+              "type": "string"
+            },
+            {
+              "id": "m04",
+              "name": "datumStr",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.datumStr }}",
+              "type": "string"
+            },
+            {
+              "id": "m05",
+              "name": "uhrzeitStr",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.uhrzeitStr }}",
+              "type": "string"
+            },
+            {
+              "id": "m06",
+              "name": "datumIso",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.datumIso }}",
+              "type": "string"
+            },
+            {
+              "id": "m07",
+              "name": "confluenceTerminIDs",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.confluenceTerminIDs }}",
+              "type": "string"
+            },
+            {
+              "id": "m08",
+              "name": "rowId",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.rowId }}",
+              "type": "string"
+            },
+            {
+              "id": "m09",
+              "name": "typ",
+              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.typ }}",
+              "type": "string"
+            },
+            {
+              "id": "m10",
+              "name": "spaceKey",
+              "value": "={{ $json.property_confluence_space_key || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "m11",
+              "name": "confluencePageId",
+              "value": "={{ $json.property_confluence_page_i_d || $json.property_confluence_page_id || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-e006-4000-8000-000000000006",
+      "name": "Set: Daten zusammenfuehren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1280, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "check-typ",
+              "leftValue": "={{ $json.typ }}",
+              "rightValue": "NEU",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-e007-4000-8000-000000000007",
+      "name": "If: NEU oder ABGELAUFEN",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1504, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.confluencePageId }}?expand=body.storage,version,title",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e008-4000-8000-000000000008",
+      "name": "Confluence: Seite holen (NEU)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1728, 160],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Neue Zeile in Confluence-Tabelle einfuegen und nach Datum sortieren\nvar page = $json;\nvar d = $('Set: Daten zusammenfuehren').item.json;\n\nvar esc = function(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n};\n\nvar rowId = d.rowId;\nvar spaceKey = d.spaceKey;\nvar terminRowId = rowId + '-' + spaceKey;\nvar datumIso = d.datumIso;\nvar datumStr = d.datumStr;\nvar uhrzeitStr = d.uhrzeitStr || '';\nvar titel = esc(d.titel);\nvar ort = esc(d.ort);\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\n// Marker fuer eindeutige Identifikation und Datumsortierung\nvar marker = '<!--tid:' + terminRowId + ' dt:' + datumIso + '-->';\nvar newRowContent = marker + '<td>' + datumStr + '</td><td>' + uhrzeitStr + '</td><td>' + titel + '</td><td>' + ort + '</td></tr>';\n\nif (html.indexOf('<tr>') === -1) {\n  // Tabelle existiert noch nicht – neu erstellen\n  var headerRow = '<tr><th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\n  var tableHtml = '<table><tbody>' + headerRow + '<tr>' + newRowContent + '</tbody></table>';\n  if (html.indexOf('</ac:rich-text-body>') !== -1) {\n    html = html.replace('</ac:rich-text-body>', tableHtml + '</ac:rich-text-body>');\n  } else {\n    html = html + tableHtml;\n  }\n} else {\n  // Tabelle existiert – Zeilen aufteilen und sortiert einfuegen\n  var parts = html.split('<tr>');\n  // parts[0] = alles vor dem ersten <tr> (Tabellen-Oeffnung)\n  // parts[1] = Header-Zeile (th-Spalten)\n  // parts[2..n] = Datenzeilen\n  var headerPart = parts[0];\n  var headerRow2 = parts.length > 1 ? parts[1] : '<th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\n  var dataRows = parts.slice(2);\n\n  // Neue Zeile hinzufuegen\n  dataRows.push(newRowContent);\n\n  // Nach Datum aufsteigend sortieren (ISO-Datum aus Marker lesen)\n  dataRows.sort(function(a, b) {\n    var getDate = function(row) {\n      var m = row.match(/<!--tid:\\S+ dt:(\\d{4}-\\d{2}-\\d{2})-->/);\n      return m ? new Date(m[1]).getTime() : 0;\n    };\n    return getDate(a) - getDate(b);\n  });\n\n  // Tabelle zusammenbauen\n  html = headerPart + '<tr>' + headerRow2 + dataRows.map(function(r) { return '<tr>' + r; }).join('');\n}\n\n// ConfluenceTerminIDs um neuen Eintrag erweitern\nvar prev = d.confluenceTerminIDs || '';\nvar newEntry = spaceKey + ':' + terminRowId;\nvar updatedTerminIDs = prev ? prev + ',' + newEntry : newEntry;\n\nreturn {\n  json: {\n    pageId: pageId,\n    pageTitle: pageTitle,\n    newVersion: currentVersion + 1,\n    updatedHtml: html,\n    notionPageId: d.notionPageId,\n    updatedTerminIDs: updatedTerminIDs\n  }\n};"
+      },
+      "id": "a1b2c3d4-e009-4000-8000-000000000009",
+      "name": "Code: Zeile einfuegen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1952, 160]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.pageId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ version: { number: $json.newVersion }, title: $json.pageTitle, type: 'page', body: { storage: { value: $json.updatedHtml, representation: 'storage' } } }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e010-4000-8000-000000000010",
+      "name": "Confluence: Seite aktualisieren (NEU)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2176, 160],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Code: Zeile einfuegen').item.json.notionPageId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "ConfluenceSync|checkbox",
+              "checkboxValue": true
+            },
+            {
+              "key": "ConfluenceTerminIDs|rich_text",
+              "textContent": "={{ $('Code: Zeile einfuegen').item.json.updatedTerminIDs }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-e011-4000-8000-000000000011",
+      "name": "Notion: ConfluenceSync setzen (NEU)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [2400, 160],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.confluencePageId }}?expand=body.storage,version,title",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e012-4000-8000-000000000012",
+      "name": "Confluence: Seite holen (ABGELAUFEN)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1728, 460],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Zeile aus Confluence-Tabelle loeschen via split('<tr>')\nvar page = $json;\nvar d = $('Set: Daten zusammenfuehren').item.json;\n\nvar spaceKey = d.spaceKey;\nvar rowId = d.rowId;\nvar terminRowId = rowId + '-' + spaceKey;\n\n// Gespeicherte Row ID fuer diesen Space Key aus ConfluenceTerminIDs lesen\nvar confIDs = d.confluenceTerminIDs || '';\nvar storedRowId = terminRowId; // Fallback\nvar entries = confIDs.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.indexOf(':') !== -1; });\nfor (var k = 0; k < entries.length; k++) {\n  if (entries[k].indexOf(spaceKey + ':') === 0) {\n    storedRowId = entries[k].substring(spaceKey.length + 1);\n    break;\n  }\n}\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\n// Zeile loeschen via split('<tr>') – filtere die Zeile mit dem passenden Marker heraus\nvar parts = html.split('<tr>');\nvar markerPattern = '<!--tid:' + storedRowId + ' ';\nvar filtered = parts.filter(function(p) { return p.indexOf(markerPattern) === -1; });\nhtml = filtered.join('<tr>');\n\nreturn {\n  json: {\n    pageId: pageId,\n    pageTitle: pageTitle,\n    newVersion: currentVersion + 1,\n    updatedHtml: html,\n    notionPageId: d.notionPageId\n  }\n};"
+      },
+      "id": "a1b2c3d4-e013-4000-8000-000000000013",
+      "name": "Code: Zeile loeschen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1952, 460]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.pageId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ version: { number: $json.newVersion }, title: $json.pageTitle, type: 'page', body: { storage: { value: $json.updatedHtml, representation: 'storage' } } }) }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-e014-4000-8000-000000000014",
+      "name": "Confluence: Seite aktualisieren (ABGELAUFEN)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2176, 460],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Code: Zeile loeschen').item.json.notionPageId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "ConfluenceSync|checkbox"
+            },
+            {
+              "key": "ConfluenceTerminIDs|rich_text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-e015-4000-8000-000000000015",
+      "name": "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [2400, 460],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Alle Termine holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Alle Termine holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Termine aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Termine aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Termin-Kunde Paar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Ein Termin-Kunde Paar": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Kundendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Set: Daten zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Daten zusammenfuehren": {
+      "main": [
+        [
+          {
+            "node": "If: NEU oder ABGELAUFEN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: NEU oder ABGELAUFEN": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite holen (NEU)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confluence: Seite holen (ABGELAUFEN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite holen (NEU)": {
+      "main": [
+        [
+          {
+            "node": "Code: Zeile einfuegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Zeile einfuegen": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite aktualisieren (NEU)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite aktualisieren (NEU)": {
+      "main": [
+        [
+          {
+            "node": "Notion: ConfluenceSync setzen (NEU)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: ConfluenceSync setzen (NEU)": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Termin-Kunde Paar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite holen (ABGELAUFEN)": {
+      "main": [
+        [
+          {
+            "node": "Code: Zeile loeschen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Zeile loeschen": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite aktualisieren (ABGELAUFEN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite aktualisieren (ABGELAUFEN)": {
+      "main": [
+        [
+          {
+            "node": "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Termin-Kunde Paar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b3c4d5e6-f7a8-4000-9000-000000000001",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "TermineConfluenceSync01",
+  "tags": []
+}
