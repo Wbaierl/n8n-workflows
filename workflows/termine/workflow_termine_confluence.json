@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Notion v2.2: Properties als property_feldname\n// Termine aufteilen in NEU und ABGELAUFEN, dann x Kunden flatten\nvar items = $input.all();\nvar flat = [];\nvar now = new Date();\nvar cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n  var notionPageId = props.id;\n\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start) {\n    datumRaw = datumObj.start;\n  } else if (typeof datumObj === 'string' && datumObj.length >= 10) {\n    datumRaw = datumObj;\n  }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw);\n\n  var confluenceSync = props.property_confluence_sync === true\n    || props.property_confluencesync === true;\n\n  var typ = null;\n  if (!confluenceSync && terminDate >= cutoff) {\n    typ = 'NEU';\n  } else if (confluenceSync && terminDate < cutoff) {\n    typ = 'ABGELAUFEN';\n  }\n  if (!typ) continue;\n\n  var titel = props.property_titel || props.name || 'Kein Titel';\n  var ort = props.property_ort || '';\n\n  var datumIso = datumRaw.substring(0, 10);\n  var dp = datumIso.split('-');\n  var datumStr = dp[2] + '.' + dp[1] + '.' + dp[0];\n\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) {\n    uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6);\n  }\n\n  var kundenRaw = props.property_kunden || [];\n  var kundenIds = Array.isArray(kundenRaw) ? kundenRaw : [kundenRaw];\n  if (kundenIds.length === 0) continue;\n\n  var confluenceTerminIDs = props.property_confluence_termin_i_ds\n    || props.property_confluenceterminids\n    || props.property_confluence_termin_ids\n    || '';\n\n  var rowId = notionPageId.replace(/-/g, '');\n\n  for (var j = 0; j < kundenIds.length; j++) {\n    var kundePageId = kundenIds[j];\n    if (!kundePageId) continue;\n    flat.push({\n      json: {\n        notionPageId: notionPageId,\n        titel: titel,\n        ort: ort,\n        datumStr: datumStr,\n        uhrzeitStr: uhrzeitStr,\n        datumIso: datumIso,\n        kundePageId: kundePageId,\n        confluenceTerminIDs: confluenceTerminIDs,\n        rowId: rowId,\n        typ: typ\n      }\n    });\n  }\n}\n\nreturn flat;"
+        "jsCode": "var items = $input.all();\nvar flat = [];\nvar now = new Date();\nvar cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n  var notionPageId = props.id;\n\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start) {\n    datumRaw = datumObj.start;\n  } else if (typeof datumObj === 'string' && datumObj.length >= 10) {\n    datumRaw = datumObj;\n  }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw);\n  var confluenceSync = props.property_confluence_sync === true || props.property_confluencesync === true;\n\n  var typ = null;\n  if (!confluenceSync && terminDate >= cutoff) { typ = 'NEU'; }\n  else if (confluenceSync && terminDate < cutoff) { typ = 'ABGELAUFEN'; }\n  if (!typ) continue;\n\n  var titel = props.property_titel || props.name || 'Kein Titel';\n  var ort = props.property_ort || '';\n  var datumIso = datumRaw.substring(0, 10);\n  var dp = datumIso.split('-');\n  var datumStr = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  var kundenRaw = props.property_kunden || [];\n  var kundenIds = Array.isArray(kundenRaw) ? kundenRaw : [kundenRaw];\n  if (kundenIds.length === 0) continue;\n\n  var confluenceTerminIDs = props.property_confluence_termin_i_ds\n    || props.property_confluenceterminids\n    || props.property_confluence_termin_ids\n    || '';\n  var rowId = notionPageId.replace(/-/g, '');\n\n  for (var j = 0; j < kundenIds.length; j++) {\n    var kundePageId = kundenIds[j];\n    if (!kundePageId) continue;\n    flat.push({ json: {\n      notionPageId: notionPageId, titel: titel, ort: ort,\n      datumStr: datumStr, uhrzeitStr: uhrzeitStr, datumIso: datumIso,\n      kundePageId: kundePageId, confluenceTerminIDs: confluenceTerminIDs,\n      rowId: rowId, typ: typ\n    }});\n  }\n}\nreturn flat;"
       },
       "id": "a1b2c3d4-e003-4000-8000-000000000003",
       "name": "Code: Termine aufteilen",
@@ -90,72 +90,17 @@
       "parameters": {
         "assignments": {
           "assignments": [
-            {
-              "id": "m01",
-              "name": "notionPageId",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.notionPageId }}",
-              "type": "string"
-            },
-            {
-              "id": "m02",
-              "name": "titel",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.titel }}",
-              "type": "string"
-            },
-            {
-              "id": "m03",
-              "name": "ort",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.ort }}",
-              "type": "string"
-            },
-            {
-              "id": "m04",
-              "name": "datumStr",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.datumStr }}",
-              "type": "string"
-            },
-            {
-              "id": "m05",
-              "name": "uhrzeitStr",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.uhrzeitStr }}",
-              "type": "string"
-            },
-            {
-              "id": "m06",
-              "name": "datumIso",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.datumIso }}",
-              "type": "string"
-            },
-            {
-              "id": "m07",
-              "name": "confluenceTerminIDs",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.confluenceTerminIDs }}",
-              "type": "string"
-            },
-            {
-              "id": "m08",
-              "name": "rowId",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.rowId }}",
-              "type": "string"
-            },
-            {
-              "id": "m09",
-              "name": "typ",
-              "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.typ }}",
-              "type": "string"
-            },
-            {
-              "id": "m10",
-              "name": "spaceKey",
-              "value": "={{ $json.property_confluence_space_key || '' }}",
-              "type": "string"
-            },
-            {
-              "id": "m11",
-              "name": "confluencePageId",
-              "value": "={{ $json.property_confluence_page_i_d || $json.property_confluence_page_id || '' }}",
-              "type": "string"
-            }
+            { "id": "m01", "name": "notionPageId", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.notionPageId }}", "type": "string" },
+            { "id": "m02", "name": "titel", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.titel }}", "type": "string" },
+            { "id": "m03", "name": "ort", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.ort }}", "type": "string" },
+            { "id": "m04", "name": "datumStr", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.datumStr }}", "type": "string" },
+            { "id": "m05", "name": "uhrzeitStr", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.uhrzeitStr }}", "type": "string" },
+            { "id": "m06", "name": "datumIso", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.datumIso }}", "type": "string" },
+            { "id": "m07", "name": "confluenceTerminIDs", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.confluenceTerminIDs }}", "type": "string" },
+            { "id": "m08", "name": "rowId", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.rowId }}", "type": "string" },
+            { "id": "m09", "name": "typ", "value": "={{ $('Loop: Ein Termin-Kunde Paar').item.json.typ }}", "type": "string" },
+            { "id": "m10", "name": "spaceKey", "value": "={{ $json.property_confluence_space_key || '' }}", "type": "string" },
+            { "id": "m11", "name": "confluencePageId", "value": "={{ $json.property_confluence_page_i_d || $json.property_confluence_page_id || '' }}", "type": "string" }
           ]
         },
         "options": {}
@@ -174,19 +119,11 @@
               "id": "check-typ",
               "leftValue": "={{ $json.typ }}",
               "rightValue": "NEU",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
+              "operator": { "type": "string", "operation": "equals" }
             }
           ],
           "combinator": "and",
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 1
-          }
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }
         },
         "options": {}
       },
@@ -210,16 +147,13 @@
       "typeVersion": 4.2,
       "position": [1728, 160],
       "credentials": {
-        "httpBasicAuth": {
-          "id": "OncAUjZtrqWedJug",
-          "name": "Unnamed credential 2"
-        }
+        "httpBasicAuth": { "id": "OncAUjZtrqWedJug", "name": "Unnamed credential 2" }
       }
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Panel-Suche mit 4 Methoden + Debug-Kontext im Fehlerfall\nvar page = $json;\nvar d = $('Set: Daten zusammenfuehren').item.json;\n\nvar esc = function(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n};\n\nvar rowId = d.rowId;\nvar spaceKey = d.spaceKey;\nvar terminRowId = rowId + '-' + spaceKey;\nvar datumIso = d.datumIso;\nvar datumStr = d.datumStr;\nvar uhrzeitStr = d.uhrzeitStr || '';\nvar titel = esc(d.titel);\nvar ort = esc(d.ort);\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\nvar marker = '<!--tid:' + terminRowId + ' dt:' + datumIso + '-->';\n\n// --- Alle <ac:rich-text-body> Abschnitte sammeln ---\nvar rtbOpen = '<ac:rich-text-body>';\nvar rtbClose = '</ac:rich-text-body>';\nvar allSections = [];\nvar sp = 0;\nwhile (true) {\n  var oi = html.indexOf(rtbOpen, sp);\n  if (oi === -1) break;\n  var s = oi + rtbOpen.length;\n  var e = html.indexOf(rtbClose, s);\n  if (e === -1) break;\n  allSections.push({ start: s, end: e });\n  sp = e + rtbClose.length;\n}\n\n// --- Titel suchen (6 Encodings) ---\nvar panelTitles = [\n  'N\\u00e4chste Termine',\n  'N&auml;chste Termine',\n  'N&#228;chste Termine',\n  'N&#xE4;chste Termine',\n  'N&#xe4;chste Termine',\n  'Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\n\nvar bodyStart = -1;\nvar bodyEnd = -1;\n\n// Methode 1: erster rich-text-body NACH dem Titel-Text\nif (titleIdx !== -1) {\n  for (var si = 0; si < allSections.length; si++) {\n    if (allSections[si].start > titleIdx) {\n      bodyStart = allSections[si].start;\n      bodyEnd = allSections[si].end;\n      break;\n    }\n  }\n}\n\n// Methode 2: Abschnitt mit bestehenden tid-Markern\nif (bodyStart === -1) {\n  for (var si2 = 0; si2 < allSections.length; si2++) {\n    if (html.substring(allSections[si2].start, allSections[si2].end).indexOf('<!--tid:') !== -1) {\n      bodyStart = allSections[si2].start;\n      bodyEnd = allSections[si2].end;\n      break;\n    }\n  }\n}\n\n// Methode 3: Abschnitt mit Datum+Uhrzeit-Header\nif (bodyStart === -1) {\n  for (var si3 = 0; si3 < allSections.length; si3++) {\n    var sc3 = html.substring(allSections[si3].start, allSections[si3].end);\n    if (sc3.indexOf('>Datum<') !== -1 && sc3.indexOf('>Uhrzeit<') !== -1) {\n      bodyStart = allSections[si3].start;\n      bodyEnd = allSections[si3].end;\n      break;\n    }\n  }\n}\n\n// Methode 4: <ac:layout-cell> das den Titel enthaelt\nif (bodyStart === -1 && titleIdx !== -1) {\n  var cellOpen = '<ac:layout-cell>';\n  var cellClose = '</ac:layout-cell>';\n  var cp = 0;\n  while (true) {\n    var ci = html.indexOf(cellOpen, cp);\n    if (ci === -1) break;\n    var cs = ci + cellOpen.length;\n    var ce = html.indexOf(cellClose, cs);\n    if (ce === -1) break;\n    if (cs <= titleIdx && titleIdx < ce) {\n      bodyStart = cs;\n      bodyEnd = ce;\n      break;\n    }\n    cp = ce + cellClose.length;\n  }\n}\n\n// Kein Panel gefunden: Fehler mit Debug-Kontext\nif (bodyStart === -1 || bodyEnd === -1) {\n  var termIdx = html.indexOf('Termine');\n  var ctx = termIdx !== -1\n    ? html.substring(Math.max(0, termIdx - 200), Math.min(html.length, termIdx + 500))\n    : 'Termine_nicht_im_HTML';\n  throw new Error('Panel nicht gefunden. pageId:' + pageId\n    + ' rtb_sections:' + allSections.length\n    + ' titleIdx:' + titleIdx\n    + ' || HTML_KONTEXT: ' + ctx);\n}\n\n// --- Panel-Body neu aufbauen ---\nvar bodyContent = html.substring(bodyStart, bodyEnd);\nvar bodyParts = bodyContent.split('<tr>');\nvar existingRows = [];\nfor (var idx = 1; idx < bodyParts.length; idx++) {\n  if (bodyParts[idx].indexOf('<!--tid:') !== -1) {\n    existingRows.push(bodyParts[idx]);\n  }\n}\n\nvar newRow = marker + '<td>' + datumStr + '</td><td>' + uhrzeitStr + '</td><td>' + titel + '</td><td>' + ort + '</td></tr>';\nexistingRows.push(newRow);\n\nexistingRows.sort(function(a, b) {\n  var getDate = function(row) {\n    var m = row.match(/<!--tid:\\S+ dt:(\\d{4}-\\d{2}-\\d{2})-->/);\n    return m ? new Date(m[1]).getTime() : 0;\n  };\n  return getDate(a) - getDate(b);\n});\n\nvar headerRow = '<tr><th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\nvar dataRowsHtml = existingRows.map(function(r) { return '<tr>' + r; }).join('');\nvar newBodyContent = '<table><tbody>' + headerRow + dataRowsHtml + '</tbody></table>';\n\nhtml = html.substring(0, bodyStart) + newBodyContent + html.substring(bodyEnd);\n\nvar prev = d.confluenceTerminIDs || '';\nvar newEntry = spaceKey + ':' + terminRowId;\nvar updatedTerminIDs = prev ? prev + ',' + newEntry : newEntry;\n\nreturn {\n  json: {\n    pageId: pageId,\n    pageTitle: pageTitle,\n    newVersion: currentVersion + 1,\n    updatedHtml: html,\n    notionPageId: d.notionPageId,\n    updatedTerminIDs: updatedTerminIDs\n  }\n};"
+        "jsCode": "// Zeile in den rich-text-body einfuegen der 'Naechste Termine' enthaelt.\n// Besonderheit: Der Titel ist eine H1-Ueberschrift INNERHALB des rich-text-body,\n// nicht ein ac:parameter. Daher muss die Section den titleIdx ENTHALTEN.\nvar page = $json;\nvar d = $('Set: Daten zusammenfuehren').item.json;\n\nvar esc = function(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n};\n\nvar rowId = d.rowId;\nvar spaceKey = d.spaceKey;\nvar terminRowId = rowId + '-' + spaceKey;\nvar datumIso = d.datumIso;\nvar datumStr = d.datumStr;\nvar uhrzeitStr = d.uhrzeitStr || '';\nvar titel = esc(d.titel);\nvar ort = esc(d.ort);\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\nvar marker = '<!--tid:' + terminRowId + ' dt:' + datumIso + '-->';\n\n// Alle <ac:rich-text-body> Abschnitte sammeln\nvar rtbOpen = '<ac:rich-text-body>';\nvar rtbClose = '</ac:rich-text-body>';\nvar allSections = [];\nvar sp = 0;\nwhile (true) {\n  var oi = html.indexOf(rtbOpen, sp);\n  if (oi === -1) break;\n  var s = oi + rtbOpen.length;\n  var e = html.indexOf(rtbClose, s);\n  if (e === -1) break;\n  allSections.push({ start: s, end: e });\n  sp = e + rtbClose.length;\n}\n\n// Titel suchen (6 Encodings)\nvar panelTitles = [\n  'N\\u00e4chste Termine', 'N&auml;chste Termine', 'N&#228;chste Termine',\n  'N&#xE4;chste Termine', 'N&#xe4;chste Termine', 'Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\n\nvar bodyStart = -1;\nvar bodyEnd = -1;\n\n// Methode 1a: Section die titleIdx ENTHAELT (Titel ist Heading im Body)\nif (titleIdx !== -1) {\n  for (var si = 0; si < allSections.length; si++) {\n    if (allSections[si].start <= titleIdx && titleIdx < allSections[si].end) {\n      bodyStart = allSections[si].start;\n      bodyEnd = allSections[si].end;\n      break;\n    }\n  }\n}\n// Methode 1b: Erste Section NACH titleIdx (Titel ist ac:parameter ausserhalb)\nif (bodyStart === -1 && titleIdx !== -1) {\n  for (var si1b = 0; si1b < allSections.length; si1b++) {\n    if (allSections[si1b].start > titleIdx) {\n      bodyStart = allSections[si1b].start;\n      bodyEnd = allSections[si1b].end;\n      break;\n    }\n  }\n}\n// Methode 2: Section mit bestehenden tid-Markern\nif (bodyStart === -1) {\n  for (var si2 = 0; si2 < allSections.length; si2++) {\n    if (html.substring(allSections[si2].start, allSections[si2].end).indexOf('<!--tid:') !== -1) {\n      bodyStart = allSections[si2].start;\n      bodyEnd = allSections[si2].end;\n      break;\n    }\n  }\n}\n// Methode 3: Section mit Datum+Uhrzeit-Header\nif (bodyStart === -1) {\n  for (var si3 = 0; si3 < allSections.length; si3++) {\n    var sc3 = html.substring(allSections[si3].start, allSections[si3].end);\n    if (sc3.indexOf('>Datum<') !== -1 && sc3.indexOf('>Uhrzeit<') !== -1) {\n      bodyStart = allSections[si3].start;\n      bodyEnd = allSections[si3].end;\n      break;\n    }\n  }\n}\n// Methode 4: ac:layout-cell das titleIdx enthaelt\nif (bodyStart === -1 && titleIdx !== -1) {\n  var cellOpen = '<ac:layout-cell>';\n  var cellClose = '</ac:layout-cell>';\n  var cp = 0;\n  while (true) {\n    var ci = html.indexOf(cellOpen, cp);\n    if (ci === -1) break;\n    var cs = ci + cellOpen.length;\n    var ce = html.indexOf(cellClose, cs);\n    if (ce === -1) break;\n    if (cs <= titleIdx && titleIdx < ce) { bodyStart = cs; bodyEnd = ce; break; }\n    cp = ce + cellClose.length;\n  }\n}\n\nif (bodyStart === -1 || bodyEnd === -1) {\n  var tIdx2 = html.indexOf('Termine');\n  var ctx = tIdx2 !== -1 ? html.substring(Math.max(0, tIdx2 - 200), Math.min(html.length, tIdx2 + 500)) : 'Termine_nicht_gefunden';\n  throw new Error('Panel nicht gefunden. pageId:' + pageId + ' sections:' + allSections.length + ' titleIdx:' + titleIdx + ' || ' + ctx);\n}\n\n// Body-Inhalt: Heading (h1/h2/h3) erhalten, nur den Teil danach ersetzen\nvar bodyContent = html.substring(bodyStart, bodyEnd);\nvar headingPart = '';\nvar tableArea = bodyContent;\nvar headingTags = ['</h1>', '</h2>', '</h3>'];\nfor (var ht = 0; ht < headingTags.length; ht++) {\n  var hEnd = bodyContent.indexOf(headingTags[ht]);\n  if (hEnd !== -1) {\n    headingPart = bodyContent.substring(0, hEnd + headingTags[ht].length);\n    tableArea = bodyContent.substring(hEnd + headingTags[ht].length);\n    break;\n  }\n}\n\n// Bestehende Marker-Zeilen aus tableArea extrahieren\nvar tParts = tableArea.split('<tr>');\nvar existingRows = [];\nfor (var idx = 1; idx < tParts.length; idx++) {\n  if (tParts[idx].indexOf('<!--tid:') !== -1) { existingRows.push(tParts[idx]); }\n}\n\n// Neue Zeile hinzufuegen und sortieren\nvar newRow = marker + '<td>' + datumStr + '</td><td>' + uhrzeitStr + '</td><td>' + titel + '</td><td>' + ort + '</td></tr>';\nexistingRows.push(newRow);\nexistingRows.sort(function(a, b) {\n  var getDate = function(r) {\n    var m = r.match(/<!--tid:\\S+ dt:(\\d{4}-\\d{2}-\\d{2})-->/);\n    return m ? new Date(m[1]).getTime() : 0;\n  };\n  return getDate(a) - getDate(b);\n});\n\nvar headerRow = '<tr><th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\nvar dataRowsHtml = existingRows.map(function(r) { return '<tr>' + r; }).join('');\nvar newBodyContent = headingPart + '<table><tbody>' + headerRow + dataRowsHtml + '</tbody></table>';\n\nhtml = html.substring(0, bodyStart) + newBodyContent + html.substring(bodyEnd);\n\nvar prev = d.confluenceTerminIDs || '';\nvar newEntry = spaceKey + ':' + terminRowId;\nvar updatedTerminIDs = prev ? prev + ',' + newEntry : newEntry;\n\nreturn { json: {\n  pageId: pageId, pageTitle: pageTitle, newVersion: currentVersion + 1,\n  updatedHtml: html, notionPageId: d.notionPageId, updatedTerminIDs: updatedTerminIDs\n}};"
       },
       "id": "a1b2c3d4-e009-4000-8000-000000000009",
       "name": "Code: Zeile einfuegen",
@@ -236,10 +170,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
@@ -254,10 +185,7 @@
       "typeVersion": 4.2,
       "position": [2176, 160],
       "credentials": {
-        "httpBasicAuth": {
-          "id": "OncAUjZtrqWedJug",
-          "name": "Unnamed credential 2"
-        }
+        "httpBasicAuth": { "id": "OncAUjZtrqWedJug", "name": "Unnamed credential 2" }
       }
     },
     {
@@ -271,14 +199,8 @@
         },
         "propertiesUi": {
           "propertyValues": [
-            {
-              "key": "ConfluenceSync|checkbox",
-              "checkboxValue": true
-            },
-            {
-              "key": "ConfluenceTerminIDs|rich_text",
-              "textContent": "={{ $('Code: Zeile einfuegen').item.json.updatedTerminIDs }}"
-            }
+            { "key": "ConfluenceSync|checkbox", "checkboxValue": true },
+            { "key": "ConfluenceTerminIDs|rich_text", "textContent": "={{ $('Code: Zeile einfuegen').item.json.updatedTerminIDs }}" }
           ]
         },
         "options": {}
@@ -289,10 +211,7 @@
       "typeVersion": 2.2,
       "position": [2400, 160],
       "credentials": {
-        "notionApi": {
-          "id": "NnTc9kDS62fncKVA",
-          "name": "Notion account"
-        }
+        "notionApi": { "id": "NnTc9kDS62fncKVA", "name": "Notion account" }
       }
     },
     {
@@ -309,16 +228,13 @@
       "typeVersion": 4.2,
       "position": [1728, 460],
       "credentials": {
-        "httpBasicAuth": {
-          "id": "OncAUjZtrqWedJug",
-          "name": "Unnamed credential 2"
-        }
+        "httpBasicAuth": { "id": "OncAUjZtrqWedJug", "name": "Unnamed credential 2" }
       }
     },
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Panel-Suche mit 4 Methoden + Debug-Kontext im Fehlerfall\nvar page = $json;\nvar d = $('Set: Daten zusammenfuehren').item.json;\n\nvar spaceKey = d.spaceKey;\nvar rowId = d.rowId;\nvar terminRowId = rowId + '-' + spaceKey;\n\nvar confIDs = d.confluenceTerminIDs || '';\nvar storedRowId = terminRowId;\nvar entries = confIDs.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.indexOf(':') !== -1; });\nfor (var k = 0; k < entries.length; k++) {\n  if (entries[k].indexOf(spaceKey + ':') === 0) {\n    storedRowId = entries[k].substring(spaceKey.length + 1);\n    break;\n  }\n}\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\n// --- Alle <ac:rich-text-body> Abschnitte sammeln ---\nvar rtbOpen = '<ac:rich-text-body>';\nvar rtbClose = '</ac:rich-text-body>';\nvar allSections = [];\nvar sp = 0;\nwhile (true) {\n  var oi = html.indexOf(rtbOpen, sp);\n  if (oi === -1) break;\n  var s = oi + rtbOpen.length;\n  var e = html.indexOf(rtbClose, s);\n  if (e === -1) break;\n  allSections.push({ start: s, end: e });\n  sp = e + rtbClose.length;\n}\n\n// --- Titel suchen (6 Encodings) ---\nvar panelTitles = [\n  'N\\u00e4chste Termine',\n  'N&auml;chste Termine',\n  'N&#228;chste Termine',\n  'N&#xE4;chste Termine',\n  'N&#xe4;chste Termine',\n  'Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\n\nvar bodyStart = -1;\nvar bodyEnd = -1;\n\n// Methode 1: erster rich-text-body NACH dem Titel-Text\nif (titleIdx !== -1) {\n  for (var si = 0; si < allSections.length; si++) {\n    if (allSections[si].start > titleIdx) {\n      bodyStart = allSections[si].start;\n      bodyEnd = allSections[si].end;\n      break;\n    }\n  }\n}\n\n// Methode 2: Abschnitt mit bestehenden tid-Markern\nif (bodyStart === -1) {\n  for (var si2 = 0; si2 < allSections.length; si2++) {\n    if (html.substring(allSections[si2].start, allSections[si2].end).indexOf('<!--tid:') !== -1) {\n      bodyStart = allSections[si2].start;\n      bodyEnd = allSections[si2].end;\n      break;\n    }\n  }\n}\n\n// Methode 3: Abschnitt mit Datum+Uhrzeit-Header\nif (bodyStart === -1) {\n  for (var si3 = 0; si3 < allSections.length; si3++) {\n    var sc3 = html.substring(allSections[si3].start, allSections[si3].end);\n    if (sc3.indexOf('>Datum<') !== -1 && sc3.indexOf('>Uhrzeit<') !== -1) {\n      bodyStart = allSections[si3].start;\n      bodyEnd = allSections[si3].end;\n      break;\n    }\n  }\n}\n\n// Methode 4: <ac:layout-cell> das den Titel enthaelt\nif (bodyStart === -1 && titleIdx !== -1) {\n  var cellOpen = '<ac:layout-cell>';\n  var cellClose = '</ac:layout-cell>';\n  var cp = 0;\n  while (true) {\n    var ci = html.indexOf(cellOpen, cp);\n    if (ci === -1) break;\n    var cs = ci + cellOpen.length;\n    var ce = html.indexOf(cellClose, cs);\n    if (ce === -1) break;\n    if (cs <= titleIdx && titleIdx < ce) {\n      bodyStart = cs;\n      bodyEnd = ce;\n      break;\n    }\n    cp = ce + cellClose.length;\n  }\n}\n\nif (bodyStart === -1 || bodyEnd === -1) {\n  var termIdx = html.indexOf('Termine');\n  var ctx = termIdx !== -1\n    ? html.substring(Math.max(0, termIdx - 200), Math.min(html.length, termIdx + 500))\n    : 'Termine_nicht_im_HTML';\n  throw new Error('Panel nicht gefunden. pageId:' + pageId\n    + ' rtb_sections:' + allSections.length\n    + ' titleIdx:' + titleIdx\n    + ' || HTML_KONTEXT: ' + ctx);\n}\n\n// --- Panel-Body neu aufbauen (ohne zu loeschende Zeile) ---\nvar bodyContent = html.substring(bodyStart, bodyEnd);\nvar bodyParts = bodyContent.split('<tr>');\nvar markerToDelete = '<!--tid:' + storedRowId + ' ';\nvar remainingRows = [];\nfor (var idx = 1; idx < bodyParts.length; idx++) {\n  if (bodyParts[idx].indexOf('<!--tid:') !== -1 && bodyParts[idx].indexOf(markerToDelete) === -1) {\n    remainingRows.push(bodyParts[idx]);\n  }\n}\n\nvar headerRow = '<tr><th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\nvar dataRowsHtml = remainingRows.map(function(r) { return '<tr>' + r; }).join('');\nvar newBodyContent = '<table><tbody>' + headerRow + dataRowsHtml + '</tbody></table>';\n\nhtml = html.substring(0, bodyStart) + newBodyContent + html.substring(bodyEnd);\n\nreturn {\n  json: {\n    pageId: pageId,\n    pageTitle: pageTitle,\n    newVersion: currentVersion + 1,\n    updatedHtml: html,\n    notionPageId: d.notionPageId\n  }\n};"
+        "jsCode": "// Zeile loeschen aus dem rich-text-body der 'Naechste Termine' enthaelt.\nvar page = $json;\nvar d = $('Set: Daten zusammenfuehren').item.json;\n\nvar spaceKey = d.spaceKey;\nvar rowId = d.rowId;\nvar terminRowId = rowId + '-' + spaceKey;\n\nvar confIDs = d.confluenceTerminIDs || '';\nvar storedRowId = terminRowId;\nvar entries = confIDs.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e.indexOf(':') !== -1; });\nfor (var k = 0; k < entries.length; k++) {\n  if (entries[k].indexOf(spaceKey + ':') === 0) {\n    storedRowId = entries[k].substring(spaceKey.length + 1);\n    break;\n  }\n}\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\n// Alle <ac:rich-text-body> Abschnitte sammeln\nvar rtbOpen = '<ac:rich-text-body>';\nvar rtbClose = '</ac:rich-text-body>';\nvar allSections = [];\nvar sp = 0;\nwhile (true) {\n  var oi = html.indexOf(rtbOpen, sp);\n  if (oi === -1) break;\n  var s = oi + rtbOpen.length;\n  var e = html.indexOf(rtbClose, s);\n  if (e === -1) break;\n  allSections.push({ start: s, end: e });\n  sp = e + rtbClose.length;\n}\n\nvar panelTitles = [\n  'N\\u00e4chste Termine', 'N&auml;chste Termine', 'N&#228;chste Termine',\n  'N&#xE4;chste Termine', 'N&#xe4;chste Termine', 'Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\n\nvar bodyStart = -1;\nvar bodyEnd = -1;\n\n// Methode 1a: Section die titleIdx ENTHAELT\nif (titleIdx !== -1) {\n  for (var si = 0; si < allSections.length; si++) {\n    if (allSections[si].start <= titleIdx && titleIdx < allSections[si].end) {\n      bodyStart = allSections[si].start;\n      bodyEnd = allSections[si].end;\n      break;\n    }\n  }\n}\n// Methode 1b: Erste Section NACH titleIdx\nif (bodyStart === -1 && titleIdx !== -1) {\n  for (var si1b = 0; si1b < allSections.length; si1b++) {\n    if (allSections[si1b].start > titleIdx) {\n      bodyStart = allSections[si1b].start;\n      bodyEnd = allSections[si1b].end;\n      break;\n    }\n  }\n}\n// Methode 2: Section mit tid-Markern\nif (bodyStart === -1) {\n  for (var si2 = 0; si2 < allSections.length; si2++) {\n    if (html.substring(allSections[si2].start, allSections[si2].end).indexOf('<!--tid:') !== -1) {\n      bodyStart = allSections[si2].start;\n      bodyEnd = allSections[si2].end;\n      break;\n    }\n  }\n}\n// Methode 3: Section mit Datum+Uhrzeit-Header\nif (bodyStart === -1) {\n  for (var si3 = 0; si3 < allSections.length; si3++) {\n    var sc3 = html.substring(allSections[si3].start, allSections[si3].end);\n    if (sc3.indexOf('>Datum<') !== -1 && sc3.indexOf('>Uhrzeit<') !== -1) {\n      bodyStart = allSections[si3].start;\n      bodyEnd = allSections[si3].end;\n      break;\n    }\n  }\n}\n// Methode 4: ac:layout-cell das titleIdx enthaelt\nif (bodyStart === -1 && titleIdx !== -1) {\n  var cellOpen = '<ac:layout-cell>';\n  var cellClose = '</ac:layout-cell>';\n  var cp = 0;\n  while (true) {\n    var ci = html.indexOf(cellOpen, cp);\n    if (ci === -1) break;\n    var cs = ci + cellOpen.length;\n    var ce = html.indexOf(cellClose, cs);\n    if (ce === -1) break;\n    if (cs <= titleIdx && titleIdx < ce) { bodyStart = cs; bodyEnd = ce; break; }\n    cp = ce + cellClose.length;\n  }\n}\n\nif (bodyStart === -1 || bodyEnd === -1) {\n  var tIdx2 = html.indexOf('Termine');\n  var ctx = tIdx2 !== -1 ? html.substring(Math.max(0, tIdx2 - 200), Math.min(html.length, tIdx2 + 500)) : 'nicht_gefunden';\n  throw new Error('Panel nicht gefunden. pageId:' + pageId + ' sections:' + allSections.length + ' titleIdx:' + titleIdx + ' || ' + ctx);\n}\n\n// Heading erhalten, nur tableArea bearbeiten\nvar bodyContent = html.substring(bodyStart, bodyEnd);\nvar headingPart = '';\nvar tableArea = bodyContent;\nvar headingTags = ['</h1>', '</h2>', '</h3>'];\nfor (var ht = 0; ht < headingTags.length; ht++) {\n  var hEnd = bodyContent.indexOf(headingTags[ht]);\n  if (hEnd !== -1) {\n    headingPart = bodyContent.substring(0, hEnd + headingTags[ht].length);\n    tableArea = bodyContent.substring(hEnd + headingTags[ht].length);\n    break;\n  }\n}\n\nvar tParts = tableArea.split('<tr>');\nvar markerToDelete = '<!--tid:' + storedRowId + ' ';\nvar remainingRows = [];\nfor (var idx = 1; idx < tParts.length; idx++) {\n  if (tParts[idx].indexOf('<!--tid:') !== -1 && tParts[idx].indexOf(markerToDelete) === -1) {\n    remainingRows.push(tParts[idx]);\n  }\n}\n\nvar headerRow = '<tr><th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\nvar dataRowsHtml = remainingRows.map(function(r) { return '<tr>' + r; }).join('');\nvar newBodyContent = headingPart + '<table><tbody>' + headerRow + dataRowsHtml + '</tbody></table>';\n\nhtml = html.substring(0, bodyStart) + newBodyContent + html.substring(bodyEnd);\n\nreturn { json: {\n  pageId: pageId, pageTitle: pageTitle, newVersion: currentVersion + 1,\n  updatedHtml: html, notionPageId: d.notionPageId\n}};"
       },
       "id": "a1b2c3d4-e013-4000-8000-000000000013",
       "name": "Code: Zeile loeschen",
@@ -335,10 +251,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
@@ -353,10 +266,7 @@
       "typeVersion": 4.2,
       "position": [2176, 460],
       "credentials": {
-        "httpBasicAuth": {
-          "id": "OncAUjZtrqWedJug",
-          "name": "Unnamed credential 2"
-        }
+        "httpBasicAuth": { "id": "OncAUjZtrqWedJug", "name": "Unnamed credential 2" }
       }
     },
     {
@@ -370,12 +280,8 @@
         },
         "propertiesUi": {
           "propertyValues": [
-            {
-              "key": "ConfluenceSync|checkbox"
-            },
-            {
-              "key": "ConfluenceTerminIDs|rich_text"
-            }
+            { "key": "ConfluenceSync|checkbox" },
+            { "key": "ConfluenceTerminIDs|rich_text" }
           ]
         },
         "options": {}
@@ -386,195 +292,41 @@
       "typeVersion": 2.2,
       "position": [2400, 460],
       "credentials": {
-        "notionApi": {
-          "id": "NnTc9kDS62fncKVA",
-          "name": "Notion account"
-        }
+        "notionApi": { "id": "NnTc9kDS62fncKVA", "name": "Notion account" }
       }
     }
   ],
   "pinData": {},
   "connections": {
-    "Alle 15 Minuten": {
-      "main": [
-        [
-          {
-            "node": "Notion: Alle Termine holen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion: Alle Termine holen": {
-      "main": [
-        [
-          {
-            "node": "Code: Termine aufteilen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Termine aufteilen": {
-      "main": [
-        [
-          {
-            "node": "Loop: Ein Termin-Kunde Paar",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
+    "Alle 15 Minuten": { "main": [[{ "node": "Notion: Alle Termine holen", "type": "main", "index": 0 }]] },
+    "Notion: Alle Termine holen": { "main": [[{ "node": "Code: Termine aufteilen", "type": "main", "index": 0 }]] },
+    "Code: Termine aufteilen": { "main": [[{ "node": "Loop: Ein Termin-Kunde Paar", "type": "main", "index": 0 }]] },
     "Loop: Ein Termin-Kunde Paar": {
       "main": [
         [],
-        [
-          {
-            "node": "Notion: Kundendaten holen",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Notion: Kundendaten holen", "type": "main", "index": 0 }]
       ]
     },
-    "Notion: Kundendaten holen": {
-      "main": [
-        [
-          {
-            "node": "Set: Daten zusammenfuehren",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set: Daten zusammenfuehren": {
-      "main": [
-        [
-          {
-            "node": "If: NEU oder ABGELAUFEN",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
+    "Notion: Kundendaten holen": { "main": [[{ "node": "Set: Daten zusammenfuehren", "type": "main", "index": 0 }]] },
+    "Set: Daten zusammenfuehren": { "main": [[{ "node": "If: NEU oder ABGELAUFEN", "type": "main", "index": 0 }]] },
     "If: NEU oder ABGELAUFEN": {
       "main": [
-        [
-          {
-            "node": "Confluence: Seite holen (NEU)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Confluence: Seite holen (ABGELAUFEN)",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Confluence: Seite holen (NEU)", "type": "main", "index": 0 }],
+        [{ "node": "Confluence: Seite holen (ABGELAUFEN)", "type": "main", "index": 0 }]
       ]
     },
-    "Confluence: Seite holen (NEU)": {
-      "main": [
-        [
-          {
-            "node": "Code: Zeile einfuegen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Zeile einfuegen": {
-      "main": [
-        [
-          {
-            "node": "Confluence: Seite aktualisieren (NEU)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Confluence: Seite aktualisieren (NEU)": {
-      "main": [
-        [
-          {
-            "node": "Notion: ConfluenceSync setzen (NEU)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion: ConfluenceSync setzen (NEU)": {
-      "main": [
-        [
-          {
-            "node": "Loop: Ein Termin-Kunde Paar",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Confluence: Seite holen (ABGELAUFEN)": {
-      "main": [
-        [
-          {
-            "node": "Code: Zeile loeschen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Zeile loeschen": {
-      "main": [
-        [
-          {
-            "node": "Confluence: Seite aktualisieren (ABGELAUFEN)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Confluence: Seite aktualisieren (ABGELAUFEN)": {
-      "main": [
-        [
-          {
-            "node": "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)": {
-      "main": [
-        [
-          {
-            "node": "Loop: Ein Termin-Kunde Paar",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Confluence: Seite holen (NEU)": { "main": [[{ "node": "Code: Zeile einfuegen", "type": "main", "index": 0 }]] },
+    "Code: Zeile einfuegen": { "main": [[{ "node": "Confluence: Seite aktualisieren (NEU)", "type": "main", "index": 0 }]] },
+    "Confluence: Seite aktualisieren (NEU)": { "main": [[{ "node": "Notion: ConfluenceSync setzen (NEU)", "type": "main", "index": 0 }]] },
+    "Notion: ConfluenceSync setzen (NEU)": { "main": [[{ "node": "Loop: Ein Termin-Kunde Paar", "type": "main", "index": 0 }]] },
+    "Confluence: Seite holen (ABGELAUFEN)": { "main": [[{ "node": "Code: Zeile loeschen", "type": "main", "index": 0 }]] },
+    "Code: Zeile loeschen": { "main": [[{ "node": "Confluence: Seite aktualisieren (ABGELAUFEN)", "type": "main", "index": 0 }]] },
+    "Confluence: Seite aktualisieren (ABGELAUFEN)": { "main": [[{ "node": "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)", "type": "main", "index": 0 }]] },
+    "Notion: ConfluenceSync zuruecksetzen (ABGELAUFEN)": { "main": [[{ "node": "Loop: Ein Termin-Kunde Paar", "type": "main", "index": 0 }]] }
   },
   "active": true,
-  "settings": {
-    "executionOrder": "v1",
-    "binaryMode": "separate"
-  },
-  "versionId": "b3c4d5e6-f7a8-4000-9000-000000000004",
+  "settings": { "executionOrder": "v1", "binaryMode": "separate" },
+  "versionId": "b3c4d5e6-f7a8-4000-9000-000000000005",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
