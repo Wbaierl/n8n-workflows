@@ -1,0 +1,419 @@
+{
+  "name": "Aktuelle Informationen → Confluence Blogpost [PUBLISH]",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "2e4c1844-7180-4368-9417-1d17065239af",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "36147c76-2802-807a-a2aa-d10f7d7d910d",
+          "mode": "list",
+          "cachedResultName": "Aktuelle Informationen",
+          "cachedResultUrl": "https://www.notion.so/36147c762802807aa2aad10f7d7d910d"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "{\"and\": [{\"property\": \"Status\", \"select\": {\"equals\": \"Freigegeben\"}}, {\"property\": \"In Confluence anzeigen\", \"checkbox\": {\"equals\": true}}, {\"property\": \"ConfluenceSync\", \"checkbox\": {\"equals\": false}}]}",
+        "options": {}
+      },
+      "id": "bcf6466c-5029-42bb-8c5a-b9344c750042",
+      "name": "Notion: Freizugebende Eintraege holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        384,
+        384
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Notion v2.2 gibt Properties als property_feldname aus\nconst items = $input.all();\nconst flat = [];\n\nfor (const item of items) {\n  const notionPageId = item.json.id;\n  const props = item.json;\n\n  // Titel\n  const titel = props.property_titel || props.name || 'Kein Titel';\n\n  // Kurztext\n  const kurztext = props.property_kurztext || '';\n\n  // Kategorie (Multi-Select → Array oder String)\n  const katRaw = props.property_kategorie;\n  const kategorie = Array.isArray(katRaw)\n    ? katRaw.join(', ')\n    : (katRaw || '');\n\n  // Datum aus 'Veroeffentlicht am' (n8n normalisiert Umlaute)\n  // Moegliche Feldnamen: property_ver_ffentlicht_am / property_veroffentlicht_am\n  const verAm = props.property_ver_ffentlicht_am\n    || props.property_veroffentlicht_am\n    || props.property_veroeffentlicht_am;\n  const datum = verAm?.start || new Date().toISOString().split('T')[0];\n\n  // DB Kunden Relation (Array von Notion Page IDs)\n  const dbKunden = props.property_db_kunden || [];\n  const kundenIds = Array.isArray(dbKunden) ? dbKunden : [dbKunden];\n\n  // Bestehende Blog-IDs (fuer spaetere Aktualisierung)\n  const currentBlogIDs = props.property_confluence_blog_i_ds\n    || props.property_confluenceblogids\n    || props.property_confluence_blog_ids\n    || '';\n\n  if (kundenIds.length === 0) continue;\n\n  for (const kundePageId of kundenIds) {\n    if (!kundePageId) continue;\n    flat.push({\n      json: {\n        notionPageId,\n        titel,\n        kurztext,\n        kategorie,\n        datum,\n        kundePageId,\n        currentBlogIDs\n      }\n    });\n  }\n}\n\nreturn flat;"
+      },
+      "id": "6b4d5e02-d127-4e87-977b-df940af5bab8",
+      "name": "Flatten: Eintraege x Kunden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "7c0758eb-44bc-443d-a975-4b3ea73ccde9",
+      "name": "Loop: Ein Paar pro Durchlauf",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1024,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.kundePageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "acd76e48-d4cf-48e0-a2df-d3a65a000405",
+      "name": "Notion: Kundendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1248,
+        304
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "spaceKey",
+              "value": "={{ $json.property_confluence_space_key || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "notionPageId",
+              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.notionPageId }}",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "titel",
+              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.titel }}",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "kurztext",
+              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.kurztext }}",
+              "type": "string"
+            },
+            {
+              "id": "s5",
+              "name": "kategorie",
+              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.kategorie }}",
+              "type": "string"
+            },
+            {
+              "id": "s6",
+              "name": "datum",
+              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.datum }}",
+              "type": "string"
+            },
+            {
+              "id": "s7",
+              "name": "currentBlogIDs",
+              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.currentBlogIDs }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6cc889dc-b487-4376-82d7-1e5e8f18fc05",
+      "name": "Daten zusammenfuehren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1472,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://blboardsolutions.atlassian.net/wiki/rest/api/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ (() => {\n  const d = $('Daten zusammenfuehren').item.json;\n  const escHtml = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n  const titel     = escHtml(d.titel);\n  const kurztext  = escHtml(d.kurztext);\n  const kategorie = escHtml(d.kategorie);\n  const datum     = escHtml(d.datum);\n  const bodyHtml  = `<h2>${titel}</h2><p>${kurztext}</p>`\n    + (kategorie ? `<p><em>Kategorie: ${kategorie}</em></p>` : '')\n    + `<p><em>Veroeffentlicht am: ${datum}</em></p>`;\n  return JSON.stringify({\n    type: 'blogpost',\n    title: `${d.titel} – ${d.datum}`,\n    space: { key: d.spaceKey },\n    metadata: {\n      labels: [{ prefix: 'global', name: 'aktuelle-info' }]\n    },\n    body: {\n      storage: {\n        value: bodyHtml,\n        representation: 'storage'\n      }\n    }\n  });\n})() }}",
+        "options": {}
+      },
+      "id": "79f99106-6974-424c-a583-9cb67029c8ec",
+      "name": "Confluence: Blogpost erstellen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1696,
+        304
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Neue Blog-ID aus Confluence-Antwort\nconst newBlogId  = $json.id || '';\nconst prev       = $('Daten zusammenfuehren').item.json;\nconst spaceKey   = prev.spaceKey || '';\nconst notionPageId = prev.notionPageId || '';\nconst datum      = prev.datum || '';\n\n// Bestehende Blog-IDs um neuen Eintrag ergaenzen\n// Format: \"KPA:12345,KPB:67890\"\nconst current    = prev.currentBlogIDs || '';\nconst newEntry   = `${spaceKey}:${newBlogId}`;\nconst updatedBlogIDs = current\n  ? `${current},${newEntry}`\n  : newEntry;\n\nreturn {\n  json: {\n    notionPageId,\n    updatedBlogIDs,\n    datum\n  }\n};"
+      },
+      "id": "fd334f9d-9ac1-4a47-b432-e686916fcd6b",
+      "name": "Code: Blog-ID speichern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notionPageId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "ConfluenceSync|checkbox",
+              "checkboxValue": true
+            },
+            {
+              "key": "ConfluenceBlogIDs|rich_text",
+              "textContent": "={{ $json.updatedBlogIDs }}"
+            },
+            {
+              "key": "Veröffentlicht am|date",
+              "includeTime": false,
+              "date": "={{ $json.datum }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5e6f2d55-399a-4aea-8954-7194a27f97ff",
+      "name": "Notion: ConfluenceSync setzen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        2128,
+        304
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8081ef6d-53bb-4164-a72e-9a693f44e1af",
+              "leftValue": "={{ $json.datum }}",
+              "rightValue": "={{ new Date().toISOString().split('T')[0] }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        800,
+        384
+      ],
+      "id": "bb1a4e1d-7335-4679-b96f-23eb12709e53",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Freizugebende Eintraege holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Freizugebende Eintraege holen": {
+      "main": [
+        [
+          {
+            "node": "Flatten: Eintraege x Kunden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten: Eintraege x Kunden": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Ein Paar pro Durchlauf": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Kundendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Daten zusammenfuehren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daten zusammenfuehren": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Blogpost erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Blogpost erstellen": {
+      "main": [
+        [
+          {
+            "node": "Code: Blog-ID speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Blog-ID speichern": {
+      "main": [
+        [
+          {
+            "node": "Notion: ConfluenceSync setzen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: ConfluenceSync setzen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Paar pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Paar pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "673b611d-ae8a-480c-b538-c06c6052b91c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "i2IrgNUcVBhJ4CfL",
+  "tags": []
+}

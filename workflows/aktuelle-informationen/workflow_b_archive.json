@@ -1,0 +1,492 @@
+{
+  "name": "Aktuelle Informationen → Confluence Blogpost [ARCHIV / LOESCHEN]",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "d152a4e1-b9d2-49b0-ab07-fc2fe974101a",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2336,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "36147c76-2802-807a-a2aa-d10f7d7d910d",
+          "mode": "list",
+          "cachedResultName": "Aktuelle Informationen",
+          "cachedResultUrl": "https://www.notion.so/36147c762802807aa2aad10f7d7d910d"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "{\"and\": [{\"or\": [{\"property\": \"Status\", \"select\": {\"equals\": \"Gesperrt\"}}, {\"property\": \"Status\", \"select\": {\"equals\": \"Archiv\"}}]}, {\"property\": \"ConfluenceSync\", \"checkbox\": {\"equals\": true}}]}",
+        "options": {}
+      },
+      "id": "63404e18-cbfc-4c50-b43a-1edfc315e8dc",
+      "name": "Notion: Archivierte Eintraege holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -2128,
+        464
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst flat = [];\n\nfor (const item of items) {\n  const notionPageId = item.json.id;\n  const props = item.json;\n\n  // DB Kunden Relation\n  const dbKunden = props.property_db_kunden || [];\n  const kundenIds = Array.isArray(dbKunden) ? dbKunden : [dbKunden];\n\n  // Gespeicherte Blog-IDs (Format: \"KPA:12345,KPB:67890\")\n  const confBlogIDs = props.property_confluence_blog_i_ds\n    || props.property_confluenceblogids\n    || props.property_confluence_blog_ids\n    || '';\n\n  if (kundenIds.length === 0) continue;\n\n  for (const kundePageId of kundenIds) {\n    if (!kundePageId) continue;\n    flat.push({\n      json: {\n        notionPageId,\n        kundePageId,\n        confBlogIDs\n      }\n    });\n  }\n}\n\nreturn flat;"
+      },
+      "id": "078b5c66-174d-4a1a-90ad-651e91c47e25",
+      "name": "Flatten: Eintraege x Kunden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1904,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "94caa915-2cd1-46c7-b963-e3da6500697f",
+      "name": "Loop: Ein Paar pro Durchlauf",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1680,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.kundePageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "7e0e9d59-72bc-44a1-bc5b-6fa4235ae2ea",
+      "name": "Notion: Kundendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -1456,
+        384
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Space Key aus DB Kunden\nconst spaceKey = $json.property_confluence_space_key || '';\n\n// Daten aus dem Loop\nconst loopItem     = $('Loop: Ein Paar pro Durchlauf').item.json;\nconst notionPageId = loopItem.notionPageId || '';\nconst confBlogIDs  = loopItem.confBlogIDs  || '';\n\n// Blog-ID fuer diesen Space Key finden\n// Format: \"KPA:12345,KPB:67890\"\nconst entries = confBlogIDs\n  .split(',')\n  .map(e => e.trim())\n  .filter(e => e.includes(':'));\n\nconst found  = entries.find(e => e.startsWith(spaceKey + ':'));\nconst blogId = found ? found.split(':').slice(1).join(':') : '';\n\nreturn {\n  json: {\n    blogId,\n    spaceKey,\n    notionPageId,\n    confBlogIDs\n  }\n};"
+      },
+      "id": "9e7e4159-ea71-4f83-990a-1b27156341a7",
+      "name": "Code: Blog-ID finden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1248,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "check-blog-id",
+              "leftValue": "={{ $json.blogId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "a099f337-2088-473f-b1cc-5066f085b289",
+      "name": "Blog-ID vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1024,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.blogId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "2056e4f4-0f40-4135-ac8c-2716e6959cba",
+      "name": "Confluence: Blogpost loeschen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -816,
+        160
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Code: Blog-ID finden').item.json.notionPageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "1424d700-fd80-4123-b9ec-43329e9c6c59",
+      "name": "Notion: Aktuellen Stand lesen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -576,
+        304
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Aktuellen Stand aus Notion (frisch gelesen)\nconst freshBlogIDs = $json.property_confluence_blog_i_ds\n  || $json.property_confluenceblogids\n  || $json.property_confluence_blog_ids\n  || '';\n\nconst spaceKey     = $('Code: Blog-ID finden').item.json.spaceKey || '';\nconst notionPageId = $('Code: Blog-ID finden').item.json.notionPageId || '';\n\n// Eintrag fuer diesen Space Key entfernen\nconst entries = freshBlogIDs\n  .split(',')\n  .map(e => e.trim())\n  .filter(e => e !== '' && !e.startsWith(spaceKey + ':'));\n\nconst updatedBlogIDs = entries.join(',');\nconst isEmpty        = updatedBlogIDs === '';\n\nreturn {\n  json: {\n    notionPageId,\n    updatedBlogIDs,\n    isEmpty\n  }\n};"
+      },
+      "id": "7b9d4a85-a141-4740-93ee-c953a4ecd765",
+      "name": "Code: Blog-ID entfernen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "check-empty",
+              "leftValue": "={{ $json.isEmpty }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "5e1834fc-40fc-4e12-9d61-de36ac6e40a7",
+      "name": "Alle Blogs geloescht?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notionPageId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "ConfluenceSync|checkbox"
+            },
+            {
+              "key": "ConfluenceBlogIDs|rich_text"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4aee00ba-0002-406e-beee-50658feea9d9",
+      "name": "Notion: Sync komplett zuruecksetzen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        480
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notionPageId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "ConfluenceBlogIDs|rich_text",
+              "textContent": "={{ $json.updatedBlogIDs }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "baa5970f-7ce0-41e0-a5b0-1f4c5329e892",
+      "name": "Notion: Blog-ID aktualisieren",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        704
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Archivierte Eintraege holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Archivierte Eintraege holen": {
+      "main": [
+        [
+          {
+            "node": "Flatten: Eintraege x Kunden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flatten: Eintraege x Kunden": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Paar pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Ein Paar pro Durchlauf": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Kundendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Blog-ID finden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Blog-ID finden": {
+      "main": [
+        [
+          {
+            "node": "Blog-ID vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blog-ID vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Blogpost loeschen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Aktuellen Stand lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Blogpost loeschen": {
+      "main": [
+        [
+          {
+            "node": "Notion: Aktuellen Stand lesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Aktuellen Stand lesen": {
+      "main": [
+        [
+          {
+            "node": "Code: Blog-ID entfernen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Blog-ID entfernen": {
+      "main": [
+        [
+          {
+            "node": "Alle Blogs geloescht?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle Blogs geloescht?": {
+      "main": [
+        [
+          {
+            "node": "Notion: Sync komplett zuruecksetzen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Blog-ID aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Sync komplett zuruecksetzen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Paar pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Blog-ID aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Paar pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "f5a64f60-b25d-4400-bd23-46255afd7c7b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "W7iluUfBA7AMjKHz",
+  "tags": []
+}
