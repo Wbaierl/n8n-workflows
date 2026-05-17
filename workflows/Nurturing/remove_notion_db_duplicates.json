@@ -1,0 +1,218 @@
+{
+  "name": "Remove_Notion_DB_Duplicates",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "52c79848-966e-4064-96c5-656b1fbf4416",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "35847c76-2802-80f2-98d9-f0175b33a031",
+          "mode": "list",
+          "cachedResultName": "Contacts Mirror",
+          "cachedResultUrl": "https://www.notion.so/35847c76280280f298d9f0175b33a031"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "f12ad994-8575-409a-9199-2280f8fe467d",
+      "name": "Get many database pages",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "archive",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.pageId }}",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        832,
+        -112
+      ],
+      "id": "4a7bec33-4dae-49ed-9c9a-9d07cbea6ec0",
+      "name": "Archive page",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\n\n// Ältesten Eintrag behalten (nach created_time, falls vorhanden)\nrows.sort((a, b) => {\n  const da = new Date(a.json.created_time || 0).getTime();\n  const db = new Date(b.json.created_time || 0).getTime();\n  return da - db;\n});\n\nconst seen = new Map();\nconst duplicates = [];\n\nfor (const item of rows) {\n  const j = item.json;\n  const pageId = j.id;\n\n  // Exakte Feldnamen aus deinem Output\n  const email      = (j.property_email       ?? '').trim().toLowerCase();\n  const hubspotId  = (j.property_hub_spot_id ?? '').trim();\n  const vorname    = (j.property_vorname      ?? '').trim().toLowerCase();\n  const nachname   = (j.property_nachname     ?? '').trim().toLowerCase();\n  const telefon    = (j.property_telefon      ?? '').trim();\n\n  // Duplikat-Key: Priorität Email → HubSpot ID → Name+Telefon\n  let key = '';\n  if (email)                        key = `email:${email}`;\n  else if (hubspotId)               key = `hubspot:${hubspotId}`;\n  else if (vorname || nachname)     key = `person:${vorname}|${nachname}|${telefon}`;\n  else continue;\n\n  if (!pageId) continue;\n\n  if (seen.has(key)) {\n    duplicates.push({\n      json: {\n        pageId,\n        duplicateKey:  key,\n        email,\n        hubspotId,\n        vorname,\n        nachname,\n        keptPageId:    seen.get(key),\n        action:        'archive'\n      }\n    });\n  } else {\n    seen.set(key, pageId);\n  }\n}\n\nif (duplicates.length === 0) {\n  return [{ json: { message: 'Keine Duplikate gefunden', inspectedRows: rows.length } }];\n}\n\nreturn duplicates;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "ed28db18-f578-4d5b-af73-527a55cd589c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5a6c7385-e0ee-4710-8a1c-ad6023a92a0d",
+              "leftValue": "={{ $json.pageId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        0
+      ],
+      "id": "1ecb221f-bb77-4ba8-be23-ec22954c677e",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "35847c76280280f298d9f0175b33a031",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        112
+      ],
+      "id": "5badec4a-893a-4c21-8427-54e04b7afcdb",
+      "name": "Update a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Archive page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive page": {
+      "main": [
+        []
+      ]
+    },
+    "Update a database page": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "HSomkpfv9ZqJU9Jn",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "c543779b-2ba2-42ad-9249-032a17f53f97",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "T8gZIQWoabyTQnKs",
+  "tags": []
+}

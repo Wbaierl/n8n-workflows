@@ -1,0 +1,893 @@
+{
+  "name": "Database_Nurturing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 5
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1584,
+        224
+      ],
+      "id": "c75f9975-0d2a-41e0-be20-e6d8e9e5b616",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b620d1d5-c033-4596-a062-892f027ee367",
+              "name": "hubspot_id",
+              "value": "={{ $json[\"identity-profiles\"]?.[0]?.vid ? String($json[\"identity-profiles\"][0].vid) : \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "27d382c1-71eb-4b1a-a6ba-257e57bfd33d",
+              "name": "name_full",
+              "value": "={{ (($json.properties?.firstname?.value ?? \"\") + \" \" + ($json.properties?.lastname?.value ?? \"\")).trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "6fd5566b-2689-449f-b749-2faa3af5b635",
+              "name": "branchen",
+              "value": "={{ $json.properties?.branchen?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "3d85a9e7-b413-4c35-bbac-0d3381c6bc54",
+              "name": "kontakttyp",
+              "value": "={{ $json.properties?.kontakt_typ?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "468fab52-87b5-4144-9590-47e60781898a",
+              "name": "leadtyp",
+              "value": "={{ $json.properties?.leadtyp?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "7011bc5c-2ef6-4c00-a6ff-f60eaf4001bd",
+              "name": "leadstatus",
+              "value": "={{ $json.properties?.hs_lead_status?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "666182f3-99e7-499e-88b3-992f59def420",
+              "name": "telefon",
+              "value": "={{ $json.properties?.phone?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "e17d9434-e591-4796-a874-37c473350a24",
+              "name": "email",
+              "value": "={{ $json.properties?.email?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "c558c5f1-168a-4506-b362-c482ac27b26e",
+              "name": "nachname",
+              "value": "={{ $json.properties?.lastname?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "1f595a71-7fea-4188-b80f-e96d695cbc20",
+              "name": "personacustomer",
+              "value": "={{ $json.properties?.personacustomer?.value ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "afb187c1-6b55-42eb-9e0f-d7002b5d56fe",
+              "name": "vorname",
+              "value": "={{ $json.properties?.firstname?.value ?? \"\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -432,
+        240
+      ],
+      "id": "24b7e2a7-cc7d-4ae9-a3d8-991bd10f03fb",
+      "name": "Normalize - Hubspot"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -624,
+        224
+      ],
+      "id": "37cf76c4-0ab4-45b5-9edc-c2b71543536b",
+      "name": "Split in Batches"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "61f4e2e7-6297-4a3d-9c43-85a849e6004b",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "da063e4d-f42c-4e80-9716-fa552718e006",
+              "leftValue": "={{ $json.hubspot_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -256,
+        240
+      ],
+      "id": "31fc3acd-7ec5-4028-9352-dceec6cc28df",
+      "name": "Filter - Relevant Contact?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "81b17352-dc7d-4a39-b43c-dd41e15cf836",
+              "leftValue": "={{ $json.exists }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        384,
+        240
+      ],
+      "id": "f6d0d518-e9c1-4ed3-96fb-2f5992f92df1",
+      "name": "IF Exists?"
+    },
+    {
+      "parameters": {
+        "amount": 1.5
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        -16
+      ],
+      "id": "17f864c8-326e-493b-a593-31e60b158da9",
+      "name": "Wait - Notion Throttle",
+      "webhookId": "d36f00d9-6b79-4a70-90dc-cea8d05733c7"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "databaseId": {
+          "__rl": true,
+          "value": "35847c76-2802-80f2-98d9-f0175b33a031",
+          "mode": "list",
+          "cachedResultName": "Contacts Mirror",
+          "cachedResultUrl": "https://www.notion.so/35847c76280280f298d9f0175b33a031"
+        },
+        "title": "Contacts Mirror",
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "HubSpot ID|rich_text",
+              "textContent": "={{ $json.hubspot_id }}"
+            },
+            {
+              "key": "Email|email",
+              "emailValue": "={{ $json.notion_email }}"
+            },
+            {
+              "key": "Vorname|rich_text",
+              "textContent": "={{ $json.notion_vorname }}"
+            },
+            {
+              "key": "Nachname|rich_text",
+              "textContent": "={{ $json.notion_nachname }}"
+            },
+            {
+              "key": "Telefon|phone_number",
+              "phoneValue": "={{ $json.notion_phone }}"
+            },
+            {
+              "key": "Name|title",
+              "title": "={{ $json.notion_name }}"
+            },
+            {
+              "key": "Persona|rich_text",
+              "textContent": "={{ ($json.notion_persona || \"\").trim() !== \"\" ? $json.notion_persona : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "Branchen|rich_text",
+              "textContent": "={{ $json.notion_branche }}"
+            },
+            {
+              "key": "Kontakttyp|select",
+              "selectValue": "={{ ($json.notion_kontakttyp || \"\").trim() !== \"\" ? $json.notion_kontakttyp : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "Leadtyp|select",
+              "selectValue": "={{ ($json.notion_leadtyp || \"\").trim() !== \"\" ? $json.notion_leadtyp : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "Leadstatus|rich_text",
+              "textContent": "={{ ($json.leadstatus || \"\").trim() !== \"\" ? $json.leadstatus : \"Nicht definiert\" }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1008,
+        256
+      ],
+      "id": "87d7ec18-3c17-4d08-b2d3-19b6582b7a1c",
+      "name": "Create a database page",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "93d8f36a-de78-410c-b55f-278e2f6a2345",
+              "name": "notion_name",
+              "value": "={{ \n  (($json.name_full || \"\").trim()) ||\n  (($json.email || \"\").trim()) ||\n  (\"Kontakt \" + $json.hubspot_id)\n}}",
+              "type": "string"
+            },
+            {
+              "id": "b0b9bcc0-6352-4372-95d9-d2da758cbaf5",
+              "name": "notion_phone",
+              "value": "={{ ($json.telefon || \"\").trim() !== \"\" ? $json.telefon : \"00000\" }}",
+              "type": "string"
+            },
+            {
+              "id": "c8cb1868-190a-47f4-a63f-cf4be8c3ca67",
+              "name": "notion_email",
+              "value": "={{ \n  ($json.email || \"\").trim() !== \"\" \n    ? $json.email \n    : null\n}}",
+              "type": "string"
+            },
+            {
+              "id": "98a6658a-d698-42a7-8950-140b469ffead",
+              "name": "notion_vorname",
+              "value": "={{ ($json.vorname || \"\").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "8cfddfca-64ff-4f9a-9081-026721d257b0",
+              "name": "notion_nachname",
+              "value": "={{ ($json.nachname || \"\").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "439865e9-bf2c-482c-8c1a-07dbdf57fbe1",
+              "name": "notion_persona",
+              "value": "={{ ($json.personacustomer || \"\").trim() !== \"\" ? $json.personacustomer : \"Nicht definiert\" }}",
+              "type": "string"
+            },
+            {
+              "id": "d91ab98f-2aa6-4d0c-b84b-99650974a8ee",
+              "name": "notion_branche",
+              "value": "={{ ($json.branchen || \"\").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "d4ce6616-fbfb-445f-bb82-8876f256b4eb",
+              "name": "notion_kontakttyp",
+              "value": "={{ ($json.kontakttyp || \"\").trim() !== \"\" ? $json.kontakttyp : \"Nicht definiert\" }}",
+              "type": "string"
+            },
+            {
+              "id": "cc00072f-bbed-480a-9ad2-f2f4a657782a",
+              "name": "notion_leadtyp",
+              "value": "={{ ($json.leadtyp || \"\").trim() !== \"\" ? $json.leadtyp : \"Nicht definiert\" }}",
+              "type": "string"
+            },
+            {
+              "id": "c527612a-b140-4ebe-a194-298497111bc6",
+              "name": "hubspot_id",
+              "value": "={{ $json.hubspot_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        672,
+        256
+      ],
+      "id": "730d40a8-ec85-4af8-9bf8-aeaceeb92ddc",
+      "name": "Prepare Notion Create Payload"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notion_page_id }}",
+          "mode": "id"
+        },
+        "simple": false,
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Name|title",
+              "title": "={{ ($json.name_full || \"\").trim() !== \"\" ? $json.name_full : (\"Kontakt \" + $json.hubspot_id) }}"
+            },
+            {
+              "key": "Email|email",
+              "emailValue": "={{ ($json.email || \"\").trim() !== \"\" ? $json.email : null }}"
+            },
+            {
+              "key": "Vorname|rich_text",
+              "textContent": "=={{ $json.vorname ?? \"\" }}"
+            },
+            {
+              "key": "Nachname|rich_text",
+              "textContent": "=={{ $json.nachname ?? \"\" }}"
+            },
+            {
+              "key": "Branchen|rich_text",
+              "textContent": "={{ $json.branchen ?? \"\" }}"
+            },
+            {
+              "key": "Persona|rich_text",
+              "textContent": "={{ ($json.personacustomer || \"\").trim() !== \"\" ? $json.personacustomer : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "Leadtyp|select",
+              "selectValue": "={{ ($json.leadtyp || \"\").trim() !== \"\" ? $json.leadtyp : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "Kontakttyp|select",
+              "selectValue": "={{ ($json.kontakttyp || \"\").trim() !== \"\" ? $json.kontakttyp : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "HubSpot ID|rich_text",
+              "textContent": "={{ $json.hubspot_id }}"
+            },
+            {
+              "key": "Leadstatus|rich_text",
+              "textContent": "={{ ($json.leadstatus || \"\").trim() !== \"\" ? $json.leadstatus : \"Nicht definiert\" }}"
+            },
+            {
+              "key": "Telefon|phone_number",
+              "phoneValue": "={{ ($json.telefon || \"\").trim() !== \"\" ? $json.telefon : null }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        848,
+        -16
+      ],
+      "id": "38f0cf7e-3772-4e7f-a49e-f6c11eeb3e44",
+      "name": "Update a database page",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0bc441c9-be94-46bb-baa1-9856b34405ed",
+              "leftValue": "={{ $json[\"identity-profiles\"]?.[0]?.vid?.toString() }}",
+              "rightValue": "774007228651",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -720,
+        624
+      ],
+      "id": "673ed59b-7a91-40cf-a34c-273e3c4691e5",
+      "name": "Filter",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {
+          "listMemberships": false,
+          "propertiesCollection": {
+            "propertiesValues": {
+              "properties": [
+                "firstname",
+                "lastname",
+                "email",
+                "phone",
+                "hs_lead_status",
+                "branchen",
+                "personacustomer",
+                "kontakt_typ",
+                "leadtyp"
+              ],
+              "propertyMode": "valueOnly"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        -960,
+        336
+      ],
+      "id": "b8e4e033-e3b3-457a-a8e2-475ed71d1a68",
+      "name": "Get many contacts",
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "8bKwr1vaf9OfVi2R",
+          "name": "HubSpot Service Key account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0bc441c9-be94-46bb-baa1-9856b34405ed",
+              "leftValue": "={{ $json.hubspot_id }}",
+              "rightValue": "774007228651",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        704,
+        -112
+      ],
+      "id": "451ef045-b70c-4da1-a891-4b86e9871d3e",
+      "name": "Filter4",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0bc441c9-be94-46bb-baa1-9856b34405ed",
+              "leftValue": "={{ $json.hubspot_id }}",
+              "rightValue": "774007228651",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        544
+      ],
+      "id": "7100fcb8-a741-4581-bcc6-fc809a200895",
+      "name": "Filter5",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "35847c76-2802-80f2-98d9-f0175b33a031",
+          "mode": "list",
+          "cachedResultName": "Contacts Mirror",
+          "cachedResultUrl": "https://www.notion.so/35847c76280280f298d9f0175b33a031"
+        },
+        "returnAll": true,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "HubSpot ID|rich_text",
+              "condition": "is_not_empty"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -1392,
+        224
+      ],
+      "id": "01b076d3-8655-4256-8e8c-ca8416eb5219",
+      "name": "Get many database pages",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const notionItems = $input.all();\nconst lookupMap = {};\n\nfor (const item of notionItems) {\n  // Überspringe leere Items (wenn Datenbank leer war)\n  if (!item.json.id) continue;\n  \n  const hsId = item.json.property_hub_spot_id ?? \"\";\n  const pageId = item.json.id ?? \"\";\n  if (hsId && pageId) {\n    lookupMap[hsId] = pageId;\n  }\n}\n\n// Map speichern\n$getWorkflowStaticData(\"global\").notionLookup = lookupMap;\n\n// IMMER genau 1 Item zurückgeben damit der Flow weiterläuft\nreturn [{ json: { lookup_ready: true, entries: Object.keys(lookupMap).length } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        224
+      ],
+      "id": "941845ca-413f-460e-8d88-842864aace95",
+      "name": "Build Lookup Map"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lookupMap = $getWorkflowStaticData(\"global\").notionLookup ?? {};\n\nreturn $input.all().map(item => {\n  const hsId = item.json.hubspot_id ?? \"\";\n  const notionPageId = lookupMap[hsId] ?? null;\n  \n  return {\n    json: {\n      ...item.json,\n      notion_page_id: notionPageId,\n      exists: !!(notionPageId)\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        240
+      ],
+      "id": "c785e179-a8f8-4d7b-92ad-b29e58093b1b",
+      "name": "Check Exists"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "203c698c-6493-4d6c-ad40-292c2fc5d3ce",
+              "leftValue": "={{ $json.leadtyp }}",
+              "rightValue": "Unternehmerboard",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -48,
+        240
+      ],
+      "id": "18fb50d6-b398-434a-9f87-6c02d9125121",
+      "name": "Unternehmerboard",
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many database pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize - Hubspot": {
+      "main": [
+        [
+          {
+            "node": "Filter - Relevant Contact?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split in Batches": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Normalize - Hubspot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter - Relevant Contact?": {
+      "main": [
+        [
+          {
+            "node": "Unternehmerboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Exists?": {
+      "main": [
+        [
+          {
+            "node": "Update a database page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter4",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Notion Create Payload",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filter5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait - Notion Throttle": {
+      "main": [
+        [
+          {
+            "node": "Split in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create a database page": {
+      "main": [
+        [
+          {
+            "node": "Wait - Notion Throttle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Notion Create Payload": {
+      "main": [
+        [
+          {
+            "node": "Create a database page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a database page": {
+      "main": [
+        [
+          {
+            "node": "Wait - Notion Throttle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many contacts": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many database pages": {
+      "main": [
+        [
+          {
+            "node": "Build Lookup Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Lookup Map": {
+      "main": [
+        [
+          {
+            "node": "Get many contacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Exists": {
+      "main": [
+        [
+          {
+            "node": "IF Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unternehmerboard": {
+      "main": [
+        [
+          {
+            "node": "Check Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "HSomkpfv9ZqJU9Jn",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "9ec06be3-3ae7-4ca4-83cc-c3fe59b05960",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "xeWykFXjsKDWSxVi",
+  "tags": []
+}

@@ -1,0 +1,326 @@
+{
+  "name": "NurturingSystem",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "event": "pagedUpdatedInDatabase",
+        "databaseId": {
+          "__rl": true,
+          "value": "35847c76-2802-802a-b4a7-cfc84a85d821",
+          "mode": "list",
+          "cachedResultName": "Content Pool",
+          "cachedResultUrl": "https://www.notion.so/35847c762802802ab4a7cfc84a85d821"
+        }
+      },
+      "type": "n8n-nodes-base.notionTrigger",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -192
+      ],
+      "id": "c8aee6a9-b1f7-49ea-9067-1843352265dc",
+      "name": "Notion Trigger",
+      "retryOnFail": true,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  // Zugriff auf das verschachtelte properties-Objekt von HubSpot\n  const vorname = item.json.vorname || \"Partner\";\n  const nachname = item.json.nachname || \"\";\n  const hubspot_id = item.json.hubspot_id || \"\";\n  const hs_persona = item.json.persona || \"\";\n\n  // Content-Daten aus dem Notion-Teil des Items\n  const titel = item.json.content_titel || \"Strategie-Impuls\";\n  const einleitung = item.json.content_einleitung || \"ich habe an unser Gespräch gedacht.\";\n  const link = item.json.content_link || \"\";\n  const kanal = item.json.content_kanal || \"Email\";\n  const delay = Number(item.json.task_delay || 1);\n\n  // Nachricht zusammenbauen\n  let nachricht = `Hallo ${vorname},\\n\\n`;\n  nachricht += `${einleitung}\\n\\n`;\n  if (link) nachricht += `Hier der Link: ${link}\\n\\n`;\n  nachricht += `Beste Grüße,\\nIhr [Ihr Name]`;\n\n  // Fälligkeit berechnen\n  const dueDate = new Date(Date.now() + delay * 24 * 60 * 60 * 1000).toISOString();\n\n  return {\n    json: {\n      ...item.json, // Behält alle ursprünglichen Daten für n8n-Referenzen\n      task_titel: `[${kanal}] ${titel} → ${vorname} ${nachname}`,\n      task_beschreibung: nachricht,\n      task_faellig: dueDate,\n      task_prioritaet: \"HIGH\",\n      hubspot_contact_id: hubspot_id,\n      persona_match: hs_persona // Zum Debuggen: Hier sehen wir, was gefunden wurde\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        -192
+      ],
+      "id": "e9cc16ab-a915-43b2-9831-91ea07cf32d5",
+      "name": "Task-Text aufbauen"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const p = item.json;\n\n  // Branchen\n  const branchenArray = Array.isArray(p[\"Ziel Branchen\"])\n    ? p[\"Ziel Branchen\"]\n    : (p[\"Ziel Branchen\"] ? [p[\"Ziel Branchen\"]] : []);\n\n  // Personacustomer (aus Spalte \"Ziel Persona\")\n  const personacustomerArray = Array.isArray(p[\"Ziel Persona\"])\n    ? p[\"Ziel Persona\"]\n    : (p[\"Ziel Persona\"] ? [p[\"Ziel Persona\"]] : []);\n\n  // Leadstatus\n  const leadstatusArray = Array.isArray(p[\"Ziel Leadstatus\"])\n    ? p[\"Ziel Leadstatus\"]\n    : (p[\"Ziel Leadstatus\"] ? [p[\"Ziel Leadstatus\"]] : []);\n\n  return {\n    json: {\n      content_id:           p[\"id\"] ?? \"\",\n      content_titel:        p[\"Titel\"] ?? \"\",\n      content_link:         p[\"Link\"] ?? null,\n      content_einleitung:   p[\"Kampagnen-Einleitung\"] ?? \"\",\n      content_kanal:        p[\"Kanal Default\"] ?? \"Email\",\n      task_delay:           p[\"Task Delay (Tage)\"] ?? 2,\n      ziel_personacustomer_array: personacustomerArray,\n      ziel_personacustomer:       personacustomerArray.join(\";\"),\n      ziel_branche_array:         branchenArray,\n      ziel_branche:               branchenArray.join(\";\"),\n      ziel_leadstatus:             leadstatusArray.join(\";\")\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        -208
+      ],
+      "id": "2927b3c4-a9d7-4f45-bd9a-7c509c7e9277",
+      "name": "Content - Normalisieren"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "35847c76-2802-80f2-98d9-f0175b33a031",
+          "mode": "list",
+          "cachedResultName": "Contacts Mirror",
+          "cachedResultUrl": "https://www.notion.so/35847c76280280f298d9f0175b33a031"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -112,
+        -208
+      ],
+      "id": "74fc5323-ecbb-44cf-bb9f-6dbfddbb9211",
+      "name": "Notion - Kontakte laden",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const CONTENT_NODE_NAME = \"Content - Normalisieren\";\nconst content = $node[CONTENT_NODE_NAME].json;\n\n// Ziel-Arrays aus Content\nconst zielPersonacustomer = content.ziel_personacustomer_array\n  .map(p => p.toLowerCase().trim())\n  .filter(p => p !== \"\");\n\nconst zielBranchen = content.ziel_branche_array\n  .map(b => b.toLowerCase().trim())\n  .filter(b => b !== \"\");\n\nconst zielLeadstatus = (content.ziel_leadstatus ?? \"\").toLowerCase().trim();\n\nconst gefiltert = items.filter(item => {\n  const c = item.json;\n\n  const personacustomer = (c.property_persona ?? \"\").toLowerCase().trim();\n  const branche    = (c.property_branchen ?? \"\").toLowerCase().trim();\n  const leadstatus = (c.property_leadstatus ?? \"\").toLowerCase().trim();\n  const email      = (c.property_email    ?? \"\").trim();\n\n  // Pflicht: Email vorhanden\n  if (!email) return false;\n\n  // Personacustomer Match\n  // Wenn Ziel-Personacustomer leer → alle durch\n  // Wenn Kontakt-Personacustomer leer → NICHT durch (kein Targeting möglich)\n  const personaMatch = zielPersonacustomer.length === 0 ||\n    (personacustomer !== \"\" && zielPersonacustomer.some(zp => personacustomer.includes(zp)));\n\n  // Branchen Match\n  // Wenn Ziel-Branche leer → alle durch\n  // Wenn Kontakt-Branche leer → NICHT durch\n  const brancheMatch = zielBranchen.length === 0 ||\n    (branche !== \"\" && zielBranchen.some(zb => branche.includes(zb)));\n\n  // Leadstatus Match\n  const leadstatusMatch = zielLeadstatus === \"\" ||\n    leadstatus === zielLeadstatus;\n\n  return personaMatch && brancheMatch && leadstatusMatch;\n});\n\n// Debug-Output: zeigt auch warum Kontakte gefiltert wurden\nif (gefiltert.length === 0) {\n  // Detailanalyse für jeden Kontakt\n  const diagnose = items.slice(0, 5).map(item => {\n    const c = item.json;\n    const personacustomer = (c.property_persona ?? \"\").toLowerCase().trim();\n    const branche = (c.property_branchen ?? \"\").toLowerCase().trim();\n    const leadstatus = (c.property_leadstatus ?? \"\").toLowerCase().trim();\n    const email = (c.property_email ?? \"\").trim();\n\n    const personaMatch = zielPersonacustomer.length === 0 ||\n      (personacustomer !== \"\" && zielPersonacustomer.some(zp => personacustomer.includes(zp)));\n    const brancheMatch = zielBranchen.length === 0 ||\n      (branche !== \"\" && zielBranchen.some(zb => branche.includes(zb)));\n    const leadstatusMatch = zielLeadstatus === \"\" || leadstatus === zielLeadstatus;\n\n    return {\n      name: c.property_name,\n      email: email,\n      persona_wert: personacustomer,\n      branche_wert: branche,\n      leadstatus_wert: leadstatus,\n      personaMatch,\n      brancheMatch,\n      leadstatusMatch\n    };\n  });\n\n  return [{\n    json: {\n      debug: true,\n      message: \"Kein Kontakt hat gematcht\",\n      ziel_personacustomer: zielPersonacustomer,\n      ziel_branchen: zielBranchen,\n      ziel_leadstatus: zielLeadstatus,\n      kontakte_gesamt: items.length,\n      diagnose\n    }\n  }];\n}\n\nreturn gefiltert.map(item => ({\n  json: {\n    hubspot_id:         item.json.property_hub_spot_id ?? \"\",\n    vorname:            item.json.property_vorname ?? \"\",\n    nachname:           item.json.property_nachname ?? \"\",\n    email:              item.json.property_email ?? \"\",\n    branche:            item.json.property_branchen ?? \"\",\n    persona:            item.json.property_persona ?? \"\",\n    content_id:         content.content_id,\n    content_titel:      content.content_titel,\n    content_link:       content.content_link,\n    content_einleitung: content.content_einleitung,\n    content_kanal:      content.content_kanal,\n    task_delay:         content.task_delay\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -192
+      ],
+      "id": "25aabb6d-4d5a-4082-ba1b-72702be424a9",
+      "name": "Filter - Targeting"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ce8e2073-4548-415a-9c5a-0e0dc0f54a8d",
+              "leftValue": "={{ $json[\"Status\"] }}",
+              "rightValue": "Task erzeugen",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -624,
+        -192
+      ],
+      "id": "8760607c-c0ab-4c44-9926-9ce25d9b53cf",
+      "name": "IF Status = Task erzeugen"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Content - Normalisieren').first().json.content_id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status|select",
+              "selectValue": "Abgeschlossen"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        -192
+      ],
+      "id": "01f2ddcb-ed67-47c2-98df-452bbf7b2b6c",
+      "name": "Update a database page",
+      "alwaysOutputData": false,
+      "retryOnFail": true,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.hubapi.com/engagements/v1/engagements",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ engagement: { active: true, type: \"TASK\", timestamp: Date.now() }, associations: { contactIds: [Number($json.hubspot_id)] }, metadata: { subject: $json.task_titel, body: $json.task_beschreibung, status: \"NOT_STARTED\", forObjectType: \"CONTACT\", priority: \"HIGH\", taskType: \"TODO\", completionDate: new Date($json.task_faellig).getTime() } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        560,
+        -192
+      ],
+      "id": "8f0099f2-9358-427f-8dfa-5deb17adcbc2",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "bmeIeLStZ5OYTRaQ",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        768,
+        -192
+      ],
+      "id": "19642e07-a2f4-4a9a-813e-84997ad626c0",
+      "name": "Aggregate"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Notion Trigger": {
+      "main": [
+        [
+          {
+            "node": "IF Status = Task erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task-Text aufbauen": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Content - Normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Notion - Kontakte laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion - Kontakte laden": {
+      "main": [
+        [
+          {
+            "node": "Filter - Targeting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter - Targeting": {
+      "main": [
+        [
+          {
+            "node": "Task-Text aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Status = Task erzeugen": {
+      "main": [
+        [
+          {
+            "node": "Content - Normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Update a database page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "HSomkpfv9ZqJU9Jn",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "177ef63c-353f-4bce-8d41-c8bc0051b4ac",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "Caji8zXhEGX7B61M",
+  "tags": []
+}
