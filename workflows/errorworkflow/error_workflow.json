@@ -1,0 +1,65 @@
+{
+  "name": "Error Workflow",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -192,
+        -112
+      ],
+      "id": "6993e315-0845-47f2-8fa9-6fc35a7a1f32",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "⚠️ Fehler in HubSpot_Update Workflow",
+        "bodyContent": "=Fehler in Node: {{ $json.execution.lastNodeExecuted }}\nFehlermeldung: {{ $json.execution.error.message }}\nZeit: {{ $now.toISO() }}\nExecution ID: {{ $json.execution.id }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -112
+      ],
+      "id": "4da9c6ed-8cf7-40a5-96af-5c51f62a66b4",
+      "name": "Send a message",
+      "webhookId": "dd9b7122-787a-4d63-905b-3f34be56d8df",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "326365f6-4abd-42d1-8cf1-d939cc28ee4c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "HSomkpfv9ZqJU9Jn",
+  "tags": []
+}
