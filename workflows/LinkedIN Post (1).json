@@ -1,0 +1,380 @@
+{
+  "name": "LinkedIN Post",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        4080,
+        1296
+      ],
+      "id": "20758e07-7bed-406f-a5c5-032924c0f8b5",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "35147c76-2802-80e3-8851-fd4736f81c35",
+          "mode": "list",
+          "cachedResultName": "Content Pipeline",
+          "cachedResultUrl": "https://app.notion.com/p/35147c76280280e38851fd4736f81c35"
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Status|select",
+              "condition": "equals",
+              "selectValue": "Geplant"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        4512,
+        1328
+      ],
+      "id": "dc0d5828-bb9c-41f3-8c31-7c3dbe787580",
+      "name": "CP_Read",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "35047c76-2802-80bf-b72f-cdbc44700ca3",
+          "mode": "list",
+          "cachedResultName": "Templates LinkedIN Posts",
+          "cachedResultUrl": "https://www.notion.so/35047c76280280bfb72fcdbc44700ca3"
+        },
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Vorlagen|title",
+              "condition": "equals",
+              "titleValue": "={{ $('CP_Read').item.json.property_type.trim() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        4672,
+        1552
+      ],
+      "id": "b08f9998-e52f-4038-ba93-3db45d759cc2",
+      "name": "TPL_Read",
+      "alwaysOutputData": true,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6963e614-bbf1-412f-a5ad-01406e5c1388",
+              "name": "page_id",
+              "value": "={{ $('CP_Read').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "7a3e7156-fd81-45c6-86a5-a8346136eaea",
+              "name": "thema",
+              "value": "={{ $('CP_Read').item.json.property_titel }}",
+              "type": "string"
+            },
+            {
+              "id": "d0e621ad-e113-40ee-b1d5-b19cf45cb0ed",
+              "name": "typ",
+              "value": "={{ $('CP_Read').item.json.property_type }}",
+              "type": "string"
+            },
+            {
+              "id": "cb8d1db5-4290-4d19-bcd7-c5784ad9d689",
+              "name": "=template",
+              "value": "={{ $('TPL_Read').item.json.property_template }}",
+              "type": "string"
+            },
+            {
+              "id": "e82eb571-1a60-456f-b65d-c227bf5b047c",
+              "name": "quelle",
+              "value": "={{ $('CP_Read').item.json.property_quelle }}",
+              "type": "string"
+            },
+            {
+              "id": "1af0782d-e5f8-499c-8238-eb841f7fe116",
+              "name": "blog_input",
+              "value": "={{ $('CP_Read').item.json.property_blog_entwurf }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5024,
+        1456
+      ],
+      "id": "71f68259-ef8e-4c2b-803e-2e2d3514cd35",
+      "name": "Prompt_Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://routellm.abacus.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": {{ JSON.stringify(\"Du bist ein erfahrener Berater und Sparringspartner für CEOs von KMU in Deutschland.\\nDu hast 28 Jahre Erfahrung in Automotive, Elektronik und Software.\\nDu moderierst Peer Advisory Boards und kennst die echten Herausforderungen von Unternehmern.\\nDu schreibst sachlich, analytisch, klar und ohne Marketing-Floskeln.\\nNutze die gegebene Strukturvorlage als Leitplanke, aber schreibe natürlich und authentisch.\\nSchreibe ausschließlich auf Deutsch.\\nVermeide Superlative, Buzzwords und typische KI-Formulierungen.\\nDer Post darf maximal 300 bis 350 Wörter und maximal 1900 bis 2000 Zeichen lang sein. Wenn du diese Grenzen nicht einhalten kannst, kürze den Inhalt, nicht die Qualität. Halte diese Grenze strikt ein.\\nSchreibe in kurzen Absätzen, nutze keine Superlative, bleibe präzise.\") \n}}\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\n        \"Erstelle einen LinkedIn-Post mit folgendem Kontext:\\n\\n\" +\n        \"Thema: \" + $json.thema + \"\\n\\n\" +\n        \"Beitragstyp: \" + $json.typ + \"\\n\\n\" +\n        \"Strukturvorlage (als Gerüst verwenden):\\n\" + $json.template + \"\\n\\n\" +\n        \"Meine eigenen Gedanken und Kernaussagen (zwingend berücksichtigen):\\n\" +\n        ($json.blog_input ? $json.blog_input : \"Keine zusätzlichen Stichpunkte vorhanden.\") + \"\\n\\n\" +\n        \"Anforderungen:\\n\" +\n        \"- Zielgruppe sind CEOs von KMU in Deutschland\\n\" +\n        \"- Schreibe analytisch, sachlich und auf Augenhöhe\\n\" +\n        \"- Keine allgemeinen Floskeln oder KI-typischen Phrasen\\n\" +\n        \"- Kurze, gut lesbare Absätze (max. 3 Zeilen pro Absatz)\\n\" +\n        \"- Trenne jeden Absatz mit einer Leerzeile für klare Lesbarkeit\\n\" +\n        \"- Konkrete Aussagen statt vager Begriffe\\n\" +\n        \"- Integriere meine Stichpunkte sinnvoll in die Argumentation\\n\" +\n        \"- Entwickle meine Gedanken weiter – wiederhole sie nicht einfach\\n\" +\n        \"- Wenn Stichpunkte vorhanden: beginne mit der stärksten Aussage daraus\\n\" +\n        \"- Maximale Länge: 300 bis 350 Wörter und maximal 1.900 Zeichen – nicht mehr, nicht weniger\\n\\n\" +\n        \"Typ-spezifische Logik:\\n\\n\" +\n        \"Wenn Beitragstyp = Board-Bericht:\\n\" +\n        \"→ Schreibe als anonymisierte Praxiserfahrung aus einem Unternehmerboard\\n\" +\n        \"→ Struktur: Beobachtung → Diskussion → Erkenntnis → Denkanstoß\\n\\n\" +\n        \"Wenn Beitragstyp = These:\\n\" +\n        \"→ Formuliere eine klare, provokante aber sachliche Position\\n\" +\n        \"→ Struktur: These → Begründung → Konsequenz für den CEO\\n\\n\" +\n        \"Wenn Beitragstyp = Fach-Tip:\\n\" +\n        \"→ Liefere einen konkreten, umsetzbaren Denkanstoß\\n\" +\n        \"→ Struktur: Problem → Analyse → Lösung → nächster Schritt\\n\\n\" +\n        \"Gib ausschließlich den fertigen LinkedIn-Post zurück.\\n\" +\n        \"Kein Kommentar, keine Erklärung, nur den Post.\"\n      ) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5280,
+        1456
+      ],
+      "id": "23e6575b-056d-411d-8a8a-9321ae3a5153",
+      "name": "AI_Post_HTTP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vCMXURNhdFBDnFbG",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('CP_Read').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "LinkedIn-Post|rich_text",
+              "textContent": "=={{ $('AI_Post_HTTP').first().json.choices[0].message.content.substring(0, 2000) }}"
+            },
+            {
+              "key": "ImagePrompt|rich_text",
+              "textContent": "=={{ $json.choices[0].message.content }}"
+            },
+            {
+              "key": "Status|select",
+              "selectValue": "=Review"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        5712,
+        1536
+      ],
+      "id": "94b1b1fe-0729-4a6f-b1de-0ed1e1c1ce90",
+      "name": "Update a database page",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://routellm.abacus.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": {{ JSON.stringify(\"Du bist ein erfahrener Visual Designer für professionelle LinkedIn-Posts.\\nDu erstellst präzise Bild-Prompts für AI-Bildgeneratoren.\\nDie Bilder sollen:\\n- Professionell und Business-tauglich sein\\n- Den Inhalt des Posts visuell unterstützen\\n- Abstrakt genug sein, um universell zu passen\\n- Keine Textelemente enthalten (nur visuelle Konzepte)\\n- Modern und minimalistisch wirken\\nSchreibe den Prompt auf Englisch für optimale Bildgenerierung.\") }}\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\n        \"Erstelle einen detaillierten Image-Prompt für folgenden LinkedIn-Post:\\n\\n\" +\n        \"=== LINKEDIN POST ===\\n\" +\n        $('AI_Post_HTTP').first().json.choices[0].message.content + \"\\n\\n\" +\n        \"=== KONTEXT ===\\n\" +\n        \"Thema: \" + $('Prompt_Data').first().json.thema + \"\\n\" +\n        \"Post-Typ: \" + $('Prompt_Data').first().json.typ + \"\\n\\n\" +\n        \"Anforderungen für den Bild-Prompt:\\n\" +\n        \"- Beschreibe eine professionelle, minimalistische Szene\\n\" +\n        \"- Keine Menschen, keine Gesichter (außer es ist zentral für das Thema)\\n\" +\n        \"- Fokus auf Konzepte, Metaphern oder abstrakte Darstellungen\\n\" +\n        \"- Passend für LinkedIn (Business-Kontext)\\n\" +\n        \"- Keine Text-Overlays im Bild\\n\" +\n        \"- Stil: Modern, clean, professionell\\n\" +\n        \"- Format: 16:9 oder 1:1\\n\\n\" +\n        \"Gib NUR den fertigen englischen Image-Prompt zurück.\\n\" +\n        \"Keine Erklärung, kein Kommentar, nur den Prompt.\\n\" +\n        \"Maximal 2-3 Sätze.\"\n      ) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5504,
+        1536
+      ],
+      "id": "9b84718c-329d-46d9-8f0e-7fae60b60e8e",
+      "name": "AI_Poste_ImagePrompt",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vCMXURNhdFBDnFbG",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "554dceae-5f88-4ab9-9ee9-684b3fb55bf8",
+              "leftValue": "={{ $('TPL_Read').item.json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4816,
+        1552
+      ],
+      "id": "ca01d4ac-6c51-4356-8c48-7d7d24406292",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "CP_Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CP_Read": {
+      "main": [
+        [
+          {
+            "node": "TPL_Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TPL_Read": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt_Data": {
+      "main": [
+        [
+          {
+            "node": "AI_Post_HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI_Post_HTTP": {
+      "main": [
+        [
+          {
+            "node": "AI_Poste_ImagePrompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI_Poste_ImagePrompt": {
+      "main": [
+        [
+          {
+            "node": "Update a database page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Prompt_Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "timeSavedPerExecution": 30
+  },
+  "versionId": "e54201a5-e54b-40c7-b292-9403f67a29fe",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "q4gIwP6VU6CIDOPP",
+  "tags": []
+}
