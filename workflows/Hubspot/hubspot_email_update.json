@@ -13,6 +13,7 @@
         "output": "fields",
         "fields": [
           "from",
+          "toRecipients",
           "internetMessageId",
           "subject",
           "bodyPreview",
@@ -36,33 +37,24 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": false,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "conditions": [
+        "assignments": {
+          "assignments": [
             {
-              "id": "check-smtp-address",
-              "leftValue": "={{ $json.from.emailAddress.address }}",
-              "rightValue": "@",
-              "operator": {
-                "type": "string",
-                "operation": "contains"
-              }
+              "id": "set-contact-email",
+              "name": "contactEmail",
+              "value": "={{ ($json.from.emailAddress.address || '').indexOf('@') !== -1 ? $json.from.emailAddress.address : (($json.toRecipients || [])[0] || {}).emailAddress?.address || '' }}",
+              "type": "string"
             }
-          ],
-          "combinator": "and"
+          ]
         },
+        "includeOtherFields": true,
         "options": {}
       },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [208, 0],
       "id": "f1a2b3c4-d5e6-4000-8000-000000000001",
-      "name": "If: Externe Email?"
+      "name": "Set: Kontakt-Email ermitteln"
     },
     {
       "parameters": {
@@ -75,7 +67,7 @@
                 "filterValues": [
                   {
                     "propertyName": "email|string",
-                    "value": "={{ $json.from.emailAddress.address }}"
+                    "value": "={{ $json.contactEmail }}"
                   }
                 ]
               }
@@ -525,14 +517,14 @@
       "main": [
         [
           {
-            "node": "If: Externe Email?",
+            "node": "Set: Kontakt-Email ermitteln",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "If: Externe Email?": {
+    "Set: Kontakt-Email ermitteln": {
       "main": [
         [
           {
@@ -540,8 +532,7 @@
             "type": "main",
             "index": 0
           }
-        ],
-        []
+        ]
       ]
     },
     "Search contacts": {
@@ -702,7 +693,7 @@
     "callerPolicy": "workflowsFromSameOwner",
     "availableInMCP": false
   },
-  "versionId": "3f0d1e2b-a9c8-4000-8000-000000000001",
+  "versionId": "4a1e2f3c-b0d1-4000-8000-000000000002",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
