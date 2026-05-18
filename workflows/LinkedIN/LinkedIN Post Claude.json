@@ -195,13 +195,7 @@
       "typeVersion": 1.7,
       "position": [5280, 1672],
       "id": "a1b2c3d4-e5f6-4000-8000-000000000012",
-      "name": "Anthropic Chat Model",
-      "credentials": {
-        "anthropicApi": {
-          "id": "AnthropicNativeKey01",
-          "name": "Anthropic API"
-        }
-      }
+      "name": "Anthropic Chat Model"
     },
     {
       "parameters": {
@@ -227,13 +221,7 @@
       "typeVersion": 1.7,
       "position": [5504, 1752],
       "id": "a1b2c3d4-e5f6-4000-8000-000000000013",
-      "name": "Anthropic Chat Model 1",
-      "credentials": {
-        "anthropicApi": {
-          "id": "AnthropicNativeKey01",
-          "name": "Anthropic API"
-        }
-      }
+      "name": "Anthropic Chat Model 1"
     },
     {
       "parameters": {
