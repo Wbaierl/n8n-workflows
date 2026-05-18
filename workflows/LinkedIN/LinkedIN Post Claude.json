@@ -14,10 +14,10 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.3,
       "position": [
-        2048,
-        848
+        7664,
+        2848
       ],
-      "id": "b783ff84-e97b-4cbf-86af-357df276f32c",
+      "id": "37c046fd-7cf7-48e5-9e24-9b9aa381f7bb",
       "name": "Schedule Trigger"
     },
     {
@@ -37,7 +37,7 @@
             {
               "key": "Status|select",
               "condition": "equals",
-              "selectValue": "Geplant"
+              "selectValue": "Freigegeben"
             }
           ]
         },
@@ -46,10 +46,10 @@
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        2480,
-        880
+        8096,
+        2880
       ],
-      "id": "5e970541-16df-4c28-8be7-fb22b5c63c22",
+      "id": "384e77ea-5a8c-426b-a691-82b2d1ee378e",
       "name": "CP_Read",
       "credentials": {
         "notionApi": {
@@ -84,10 +84,10 @@
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        2640,
-        1104
+        8256,
+        3104
       ],
-      "id": "7ef2ca86-52f0-41c2-9ddf-c9da2f1d7b25",
+      "id": "cdc87337-1501-4ecb-99ea-ea4eb845c576",
       "name": "TPL_Read",
       "alwaysOutputData": true,
       "credentials": {
@@ -122,7 +122,7 @@
             },
             {
               "id": "cb8d1db5-4290-4d19-bcd7-c5784ad9d689",
-              "name": "=template",
+              "name": "template",
               "value": "={{ $('TPL_Read').item.json.property_template }}",
               "type": "string"
             },
@@ -145,10 +145,10 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        2992,
-        1008
+        8608,
+        3008
       ],
-      "id": "690e12ec-86e8-437f-9d7c-db5cd4235323",
+      "id": "914bdb58-7a50-469e-9f42-5a8b58f2138f",
       "name": "Prompt_Data"
     },
     {
@@ -180,33 +180,89 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        2784,
-        1104
+        8400,
+        3104
       ],
-      "id": "6034cbbc-88f0-4716-8b3e-f1047767eaaa",
+      "id": "dfb2af7a-4545-4782-a35a-abc75d5beb94",
       "name": "If"
     },
     {
-      "parameters": {},
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.4,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 2000,\n  \"system\": {{ JSON.stringify(\"Du bist ein erfahrener Berater und Sparringspartner für CEOs von KMU in Deutschland.\\nDu hast 28 Jahre Erfahrung in Automotive, Elektronik und Software.\\nDu moderierst Peer Advisory Boards und kennst die echten Herausforderungen von Unternehmern.\\nDu schreibst sachlich, analytisch, klar und ohne Marketing-Floskeln.\\nNutze die gegebene Strukturvorlage als Leitplanke, aber schreibe natürlich und authentisch.\\nSchreibe ausschließlich auf Deutsch.\\nVermeide Superlative, Buzzwords und typische KI-Formulierungen.\\nDer Post darf maximal 300 bis 350 Wörter und maximal 1900 bis 2000 Zeichen lang sein. Wenn du diese Grenzen nicht einhalten kannst, kürze den Inhalt, nicht die Qualität. Halte diese Grenze strikt ein.\\nSchreibe in kurzen Absätzen, nutze keine Superlative, bleibe präzise.\") }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\n        \"Erstelle einen LinkedIn-Post mit folgendem Kontext:\\n\\n\" +\n        \"Thema: \" + $json.thema + \"\\n\\n\" +\n        \"Beitragstyp: \" + $json.typ + \"\\n\\n\" +\n        \"Strukturvorlage (als Gerüst verwenden):\\n\" + $json.template + \"\\n\\n\" +\n        \"Meine eigenen Gedanken und Kernaussagen (zwingend berücksichtigen):\\n\" +\n        ($json.blog_input ? $json.blog_input : \"Keine zusätzlichen Stichpunkte vorhanden.\") + \"\\n\\n\" +\n        \"Anforderungen:\\n\" +\n        \"- Zielgruppe sind CEOs von KMU in Deutschland\\n\" +\n        \"- Schreibe analytisch, sachlich und auf Augenhöhe\\n\" +\n        \"- Keine allgemeinen Floskeln oder KI-typischen Phrasen\\n\" +\n        \"- Kurze, gut lesbare Absätze (max. 3 Zeilen pro Absatz)\\n\" +\n        \"- Trenne jeden Absatz mit einer Leerzeile für klare Lesbarkeit\\n\" +\n        \"- Konkrete Aussagen statt vager Begriffe\\n\" +\n        \"- Integriere meine Stichpunkte sinnvoll in die Argumentation\\n\" +\n        \"- Entwickle meine Gedanken weiter – wiederhole sie nicht einfach\\n\" +\n        \"- Wenn Stichpunkte vorhanden: beginne mit der stärksten Aussage daraus\\n\" +\n        \"- Maximale Länge: 300 bis 350 Wörter und maximal 1.900 Zeichen – nicht mehr, nicht weniger\\n\\n\" +\n        \"Typ-spezifische Logik:\\n\\n\" +\n        \"Wenn Beitragstyp = Board-Bericht:\\n\" +\n        \"→ Schreibe als anonymisierte Praxiserfahrung aus einem Unternehmerboard\\n\" +\n        \"→ Struktur: Beobachtung → Diskussion → Erkenntnis → Denkanstoß\\n\\n\" +\n        \"Wenn Beitragstyp = These:\\n\" +\n        \"→ Formuliere eine klare, provokante aber sachliche Position\\n\" +\n        \"→ Struktur: These → Begründung → Konsequenz für den CEO\\n\\n\" +\n        \"Wenn Beitragstyp = Fach-Tip:\\n\" +\n        \"→ Liefere einen konkreten, umsetzbaren Denkanstoß\\n\" +\n        \"→ Struktur: Problem → Analyse → Lösung → nächster Schritt\\n\\n\" +\n        \"Gib ausschließlich den fertigen LinkedIn-Post zurück.\\n\" +\n        \"Kein Kommentar, keine Erklärung, nur den Post.\"\n      ) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
-        3248,
-        1008
+        8864,
+        3008
       ],
-      "id": "44827771-0ec3-498a-8292-d447de04140f",
-      "name": "AI_Post"
+      "id": "f6efe233-f8ff-45a9-9a69-2a1eb87cc790",
+      "name": "AI_Post_HTTP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2VbBkCWrFc39ghVV",
+          "name": "Header Auth account 3"
+        },
+        "anthropicApi": {
+          "id": "iCMaqkiVfMfgXWXJ",
+          "name": "Anthropic account 6"
+        }
+      }
     },
     {
-      "parameters": {},
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.4,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 500,\n  \"system\": {{ JSON.stringify(\"Du bist ein erfahrener Visual Designer für professionelle LinkedIn-Posts.\\nDu erstellst präzise Bild-Prompts für AI-Bildgeneratoren.\\nDie Bilder sollen:\\n- Professionell und Business-tauglich sein\\n- Den Inhalt des Posts visuell unterstützen\\n- Abstrakt genug sein, um universell zu passen\\n- Keine Textelemente enthalten (nur visuelle Konzepte)\\n- Modern und minimalistisch wirken\\nSchreibe den Prompt auf Englisch für optimale Bildgenerierung.\") }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\n        \"Erstelle einen detaillierten Image-Prompt für folgenden LinkedIn-Post:\\n\\n\" +\n        \"=== LINKEDIN POST ===\\n\" +\n        $('AI_Post_HTTP').first().json.content[0].text + \"\\n\\n\" +\n        \"=== KONTEXT ===\\n\" +\n        \"Thema: \" + $('Prompt_Data').first().json.thema + \"\\n\" +\n        \"Post-Typ: \" + $('Prompt_Data').first().json.typ + \"\\n\\n\" +\n        \"Anforderungen für den Bild-Prompt:\\n\" +\n        \"- Beschreibe eine professionelle, minimalistische Szene\\n\" +\n        \"- Keine Menschen, keine Gesichter (außer es ist zentral für das Thema)\\n\" +\n        \"- Fokus auf Konzepte, Metaphern oder abstrakte Darstellungen\\n\" +\n        \"- Passend für LinkedIn (Business-Kontext)\\n\" +\n        \"- Keine Text-Overlays im Bild\\n\" +\n        \"- Stil: Modern, clean, professionell\\n\" +\n        \"- Format: 16:9 oder 1:1\\n\\n\" +\n        \"Gib NUR den fertigen englischen Image-Prompt zurück.\\n\" +\n        \"Keine Erklärung, kein Kommentar, nur den Prompt.\\n\" +\n        \"Maximal 2-3 Sätze.\"\n      ) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
       "position": [
-        3504,
-        1312
+        9088,
+        3088
       ],
-      "id": "20709dc4-bcc3-462a-829e-1dbde85b2aa6",
-      "name": "AI_ImagePrompt"
+      "id": "5c77736f-fb7e-4b09-9942-21dd3a5a10a3",
+      "name": "AI_ImagePrompt_HTTP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2VbBkCWrFc39ghVV",
+          "name": "Header Auth account 3"
+        },
+        "anthropicApi": {
+          "id": "3hbJbDNxNVUmteDY",
+          "name": "Anthropic account 7"
+        }
+      }
     },
     {
       "parameters": {
@@ -221,15 +277,15 @@
           "propertyValues": [
             {
               "key": "LinkedIn-Post|rich_text",
-              "textContent": "=={{ $('AI_Post').first().json.text.substring(0, 2000) }}"
+              "textContent": "={{ ($('AI_Post_HTTP').first().json.content ?? [])[0]?.text?.substring(0, 2000) ?? '' }}"
             },
             {
               "key": "ImagePrompt|rich_text",
-              "textContent": "=={{ $json.text }}"
+              "textContent": "={{ ($json.content ?? [])[0]?.text ?? '' }}"
             },
             {
               "key": "Status|select",
-              "selectValue": "=Review"
+              "selectValue": "Review"
             }
           ]
         },
@@ -238,65 +294,15 @@
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        3808,
-        1088
+        9296,
+        3088
       ],
-      "id": "af5d5654-4c77-4c5d-b01b-567c70a367ad",
+      "id": "9c157052-6afe-476c-94b1-24c6062c1fef",
       "name": "Update a database page",
       "credentials": {
         "notionApi": {
           "id": "NnTc9kDS62fncKVA",
           "name": "Notion account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "claude-sonnet-4-5-20250929",
-          "cachedResultName": "Claude Sonnet 4.5"
-        },
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1.3,
-      "position": [
-        3088,
-        1456
-      ],
-      "id": "be03de75-8377-4a3a-acce-06f6a65acaf9",
-      "name": "Anthropic Chat Model1",
-      "credentials": {
-        "anthropicApi": {
-          "id": "eBuOaqBg5JldFNNg",
-          "name": "Anthropic account 2"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "claude-sonnet-4-5-20250929",
-          "cachedResultName": "Claude Sonnet 4.5"
-        },
-        "options": {}
-      },
-      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
-      "typeVersion": 1.3,
-      "position": [
-        3472,
-        1600
-      ],
-      "id": "4e185104-198c-483e-aaf2-1d6af9d03d89",
-      "name": "Anthropic Chat Model2",
-      "credentials": {
-        "anthropicApi": {
-          "id": "eBuOaqBg5JldFNNg",
-          "name": "Anthropic account 2"
         }
       }
     }
@@ -351,52 +357,30 @@
       "main": [
         [
           {
-            "node": "AI_Post",
+            "node": "AI_Post_HTTP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "AI_Post": {
+    "AI_Post_HTTP": {
       "main": [
         [
           {
-            "node": "AI_ImagePrompt",
+            "node": "AI_ImagePrompt_HTTP",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "AI_ImagePrompt": {
+    "AI_ImagePrompt_HTTP": {
       "main": [
         [
           {
             "node": "Update a database page",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Anthropic Chat Model1": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI_Post",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Anthropic Chat Model2": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "AI_ImagePrompt",
-            "type": "ai_languageModel",
             "index": 0
           }
         ]
@@ -408,7 +392,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "9395e17d-8b08-4272-ae1c-a59bf5369cca",
+  "versionId": "cb01c027-e474-4ca7-932d-885dcb71a189",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
