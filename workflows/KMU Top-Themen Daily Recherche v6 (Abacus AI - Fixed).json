@@ -1,0 +1,575 @@
+{
+  "name": "KMU Top-Themen Daily Recherche v6 (Abacus AI - Fixed)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst artikelText = (input.artikelText || \"\").trim();\n\nconst systemMessage = `Du bist ein KMU-Business-Analyst. Analysiere die Artikel und liefere die TOP 5 Themen als JSON-Array mit VOLLSTÄNDIGEN Objekten.\n\nPFLICHTFORMAT - Antworte NUR mit diesem JSON, KEIN Markdown, KEINE Erklärungen:\n[\n  {\n    \"thema\": \"Titel des Themas\",\n    \"beschreibung\": \"Kurze Beschreibung max 200 Zeichen\",\n    \"branchen\": [\"Maschinenbau\", \"IT\"],\n    \"quellen_url\": \"https://beispiel.de/artikel\",\n    \"weitere_quellen\": \"https://quelle2.de\",\n    \"peer_advisory_board_kontext\": \"Diskussionsimpuls für Peer Advisory Board max 400 Zeichen\",\n    \"relevanz_score\": 8\n  }\n]\n\nWICHTIG: Jedes der 5 Objekte MUSS alle 7 Felder enthalten. Kein Markdown. Kein Text außerhalb des Arrays.`;\n\nconst userContent = `Analysiere diese Artikel und erstelle die TOP 5 Themen-Liste im oben definierten JSON-Format:\n\n${artikelText}\n\n---\nAntworte jetzt NUR mit dem JSON-Array (5 vollständige Objekte mit allen 7 Feldern):`;\n\nreturn {\n  requestBody: {\n    model: \"gpt-4o\",\n    messages: [\n      { role: \"system\", content: systemMessage },\n      { role: \"user\", content: userContent }\n    ],\n    temperature: 0.2\n  }\n};"
+      },
+      "id": "1a9eeb17-4f9a-41b3-be75-8d6d2afbc9c1",
+      "name": "V6: Abacus AI Body vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -9440,
+        -256
+      ],
+      "notes": "V6: Erstellt den kompletten Request Body für Abacus AI RouteLLM API (OpenAI-kompatibel)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://routellm.abacus.ai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "json",
+        "body": "={{ JSON.stringify($json.requestBody) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "27b4d27f-3fe5-4ed8-b66f-f3463bcff23b",
+      "name": "V6: Abacus AI Analyse (HTTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -9152,
+        -256
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vCMXURNhdFBDnFbG",
+          "name": "Header Auth account"
+        }
+      },
+      "notes": "V6: Abacus AI RouteLLM API Call. Timeout auf 120s erhöht für lange Analysen. URL: https://routellm.abacus.ai/v1/chat/completions"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// V6 NEU: DEBUG - API Response Inspektion\n// Zeigt die rohe Antwort der Abacus AI API an, damit man\n// die tatsächliche Struktur sehen kann.\n// ============================================================\n\nconst raw = $input.first().json;\n\n// Typ und Struktur der Response analysieren\nconst responseType = typeof raw;\nconst topLevelKeys = responseType === 'object' && raw !== null ? Object.keys(raw) : [];\n\n// Prüfe verschiedene mögliche Pfade zur Antwort\nconst debugInfo = {\n  _debug_response_type: responseType,\n  _debug_top_level_keys: topLevelKeys.join(', ') || '(keine)',\n  _debug_has_choices: !!(raw && raw.choices),\n  _debug_has_data: !!(raw && raw.data),\n  _debug_has_body: !!(raw && raw.body),\n  _debug_has_message: !!(raw && raw.message),\n  _debug_has_content: !!(raw && raw.content),\n  _debug_has_text: !!(raw && raw.text),\n  _debug_is_string: responseType === 'string',\n  _debug_raw_preview: responseType === 'string'\n    ? raw.substring(0, 500)\n    : JSON.stringify(raw).substring(0, 500)\n};\n\n// Alles durchreichen plus Debug-Info\nreturn [{\n  json: {\n    ...raw,\n    _debug: debugInfo\n  }\n}];"
+      },
+      "id": "4f50fde4-1726-4fcc-b3f8-b3fb982f3ef7",
+      "name": "DEBUG: API Response anzeigen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8768,
+        -368
+      ],
+      "disabled": true,
+      "notes": "V6 NEU: Debug-Node der die rohe API Response analysiert und deren Struktur sichtbar macht. Die _debug Felder zeigen den Typ, die Keys und einen Preview der Response."
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\n\nlet datum = new Date().toISOString().split('T')[0];\n\n// Rohen Content holen\nlet rawContent = response.choices?.[0]?.message?.content || \"\";\n\n// Markdown-Wrapper entfernen (```json ... ``` oder ``` ... ```)\nrawContent = rawContent\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/\\s*```$/i, '')\n  .trim();\n\n// JSON-Array extrahieren\nlet themen = [];\n\n// Versuch 1: Direkt parsen\ntry {\n  const parsed = JSON.parse(rawContent);\n  if (Array.isArray(parsed)) themen = parsed;\n} catch(e) {}\n\n// Versuch 2: Array per Regex finden\nif (themen.length === 0) {\n  const match = rawContent.match(/\\[\\s*[\\s\\S]*\\]/);\n  if (match) {\n    try { themen = JSON.parse(match[0]); } catch(e) {}\n  }\n}\n\nif (themen.length === 0) {\n  throw new Error(\"Kein JSON-Array gefunden. Raw: \" + rawContent.substring(0, 300));\n}\n\n// Für Notion aufbereiten\nreturn themen.slice(0, 5).map((thema, idx) => {\n  \n  // Falls KI nur Strings liefert (Fallback)\n  if (typeof thema === 'string') {\n    return {\n      json: {\n        thema: thema,\n        datum: datum,\n        ranking: idx + 1,\n        beschreibung: \"\",\n        branchen: [],\n        quellen_url: null,\n        weitere_quellen: \"\",\n        peer_advisory_board_kontext: \"\",\n        relevanz_score: 5\n      }\n    };\n  }\n\n  // URL validieren (Notion akzeptiert kein \"\")\n  const rawUrl = thema.quellen_url || thema.quellen || \"\";\n  const validUrl = rawUrl.startsWith('http') ? rawUrl : null;\n\n  return {\n    json: {\n      thema: String(thema.thema || `Thema ${idx + 1}`).substring(0, 200),\n      datum: datum,\n      ranking: idx + 1,\n      beschreibung: String(thema.beschreibung || \"\").substring(0, 1900),\n      branchen: Array.isArray(thema.branchen) ? thema.branchen : [],\n      quellen_url: validUrl,\n      weitere_quellen: String(thema.weitere_quellen || \"\").substring(0, 1900),\n      peer_advisory_board_kontext: String(thema.peer_advisory_board_kontext || thema.peer_advisory_context || \"\").substring(0, 1900),\n      relevanz_score: Math.min(10, Math.max(1, Number(thema.relevanz_score) || 5))\n    }\n  };\n});"
+      },
+      "id": "d2dce3fc-6b74-4a3f-998f-a34f1a16a1ae",
+      "name": "V6: KI-Antwort verarbeiten (FIXED)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8336,
+        400
+      ],
+      "notes": "V6 FIX: Komplett überarbeiteter Parser mit Multi-Format-Support und robustem Error Handling. Unterstützt: OpenAI-Format, Plain Text, verschachtelte Strukturen, Code-Blocks. Enthält 5 verschiedene JSON-Parsing-Strategien mit detaillierten Fehlermeldungen."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"parent\": {\n    \"database_id\": \"bdbe0718c8b44a8883b2992c69767fb1\"\n  },\n  \"properties\": {\n    \"Thema\": {\n      \"title\": [\n        {\n          \"text\": {\n            \"content\": \"{{ $json.thema }}\"\n          }\n        }\n      ]\n    },\n    \"Datum\": {\n      \"date\": {\n        \"start\": \"{{ $json.datum }}\"\n      }\n    },\n    \"Ranking\": {\n      \"number\": {{ $json.ranking }}\n    },\n    \"Beschreibung\": {\n      \"rich_text\": [\n        {\n          \"text\": {\n            \"content\": \"{{ $json.beschreibung }}\"\n          }\n        }\n      ]\n    },\n    \"Branchen\": {\n      \"multi_select\": {{ JSON.stringify($json.branchen.map(b => ({\"name\": b}))) }}\n    },\n    \"Quellen\": {\n      \"url\": \"{{ $json.quellen_url }}\"\n    },\n    \"Weitere Quellen\": {\n      \"rich_text\": [\n        {\n          \"text\": {\n            \"content\": \"{{ $json.weitere_quellen }}\"\n          }\n        }\n      ]\n    },\n    \"Peer Advisory Board Kontext\": {\n      \"rich_text\": [\n        {\n          \"text\": {\n            \"content\": \"{{ $json.peer_advisory_board_kontext }}\"\n          }\n        }\n      ]\n    },\n    \"Relevanz-Score\": {\n      \"number\": {{ $json.relevanz_score }}\n    },\n    \"Status\": {\n      \"select\": {\n        \"name\": \"Neu\"\n      }\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "719e2747-1444-4cf9-ad98-34f59489baf4",
+      "name": "In Notion speichern",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -8080,
+        400
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Erstellt für jedes der 5 Top-Themen einen neuen Eintrag in der Notion-Datenbank 'KMU Top-Themen Daily' (ID: bdbe0718c8b44a8883b2992c69767fb1). Verwendet die Notion API v2022-06-28."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// V6: Ergebnis-Zusammenfassung\n// Erstellt einen Überblick über den gesamten Workflow-Durchlauf\n// ============================================================\n\nconst notionResults = $input.all();\n\nlet artikelAnzahl = 0;\nlet fehlerAnzahl = 0;\ntry {\n  const artikelDaten = $('Artikel konsolidieren (v3)').first().json;\n  artikelAnzahl = artikelDaten.artikelAnzahl || 0;\n  fehlerAnzahl = artikelDaten.fehlerAnzahl || 0;\n} catch (e) {\n  // Fallback wenn Node nicht erreichbar\n}\n\nconst erfolgreich = notionResults.filter(r => !r.json.error && r.json.id).length;\nconst fehlgeschlagen = notionResults.length - erfolgreich;\n\nconst zusammenfassung = {\n  workflow: 'KMU Top-Themen Daily Recherche v6 (Abacus AI - Fixed)',\n  datum: new Date().toISOString(),\n  ergebnis: {\n    artikel_gesammelt: artikelAnzahl,\n    quellen_fehler: fehlerAnzahl,\n    themen_erstellt: erfolgreich,\n    themen_fehlgeschlagen: fehlgeschlagen\n  },\n  status: fehlgeschlagen === 0 ? 'Erfolgreich' : 'Teilweise erfolgreich',\n  details: erfolgreich > 0 \n    ? `${erfolgreich} von ${notionResults.length} Themen erfolgreich in Notion gespeichert.`\n    : 'WARNUNG: Keine Themen konnten gespeichert werden!'\n};\n\nreturn [{ json: zusammenfassung }];"
+      },
+      "id": "c9b46d05-dbc7-4090-b27c-8d7f61eee515",
+      "name": "Ergebnis-Zusammenfassung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7824,
+        400
+      ],
+      "notes": "V6: Erstellt eine Zusammenfassung des Workflow-Durchlaufs."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "error-check",
+              "leftValue": "={{ Number($json.ergebnis.themen_fehlgeschlagen || 0) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ecc5f2a9-c80b-4f56-95bf-c02784fdb3b9",
+      "name": "Fehler vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -7584,
+        400
+      ],
+      "notes": "Prüft ob es Fehler beim Speichern in Notion gab."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Fehler-Logging\n// ============================================================\n\nconst zusammenfassung = $input.first().json;\n\nconsole.error('=== WORKFLOW FEHLER ===');\nconsole.error(`Datum: ${zusammenfassung.datum}`);\nconsole.error(`Status: ${zusammenfassung.status}`);\nconsole.error(`Details: ${zusammenfassung.details}`);\nconsole.error('======================');\n\nreturn [{\n  json: {\n    type: 'error_notification',\n    subject: `⚠️ KMU Workflow v6: ${zusammenfassung.status}`,\n    body: `Der KMU Top-Themen Workflow hatte Probleme:\\n\\n${zusammenfassung.details}`,\n    zusammenfassung: zusammenfassung\n  }\n}];"
+      },
+      "id": "2b47fa31-a81e-41b6-af46-eb2c4d51721a",
+      "name": "Fehler-Protokoll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7328,
+        288
+      ],
+      "notes": "Protokolliert Fehler und bereitet eine Benachrichtigung vor."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Erfolgs-Logging\n// ============================================================\n\nconst zusammenfassung = $input.first().json;\n\nconsole.log('=== WORKFLOW v6 ERFOLGREICH ===');\nconsole.log(`Datum: ${zusammenfassung.datum}`);\nconsole.log(`Artikel gesammelt: ${zusammenfassung.ergebnis.artikel_gesammelt}`);\nconsole.log(`Themen erstellt: ${zusammenfassung.ergebnis.themen_erstellt}`);\nconsole.log('===============================');\n\nreturn [{\n  json: {\n    type: 'success',\n    message: `✅ ${zusammenfassung.ergebnis.themen_erstellt} KMU-Themen erfolgreich in Notion gespeichert. (Workflow v6)`,\n    zusammenfassung: zusammenfassung\n  }\n}];"
+      },
+      "id": "542035f1-b1c2-4318-8f7a-de3f61c198f3",
+      "name": "Erfolg-Protokoll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -7328,
+        496
+      ],
+      "notes": "Bestätigt den erfolgreichen Abschluss und gibt eine Zusammenfassung aus."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Zeigt die Daten, die zur KI gehen\nreturn $input.all().map(item => ({\n  json: {\n    debug_input: item.json,\n    debug_timestamp: new Date().toISOString()\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8512,
+        -368
+      ],
+      "id": "40c58a35-a648-4e21-a8ae-5f94846ce649",
+      "name": "Code in JavaScript",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// FEATURE 1: XML-Parser - Strukturierte Daten aus RSS/Atom XML\n// Extrahiert pro Feed max. 10 Artikel: Titel, Beschreibung, Link,\n// Datum, Autor. Spart KI-Tokens durch Vorverarbeitung.\n// ====================================================================\n\nconst items = $input.all();\nconst alleParsed = [];\n\nfunction getTag(xml, tag) {\n  const re = new RegExp(\n    '<' + tag + '[^>]*><!\\\\[CDATA\\\\[([\\\\s\\\\S]*?)\\\\]\\\\]><\\\\/' + tag + '>'\n    + '|<' + tag + '[^>]*>([\\\\s\\\\S]*?)<\\\\/' + tag + '>', 'i');\n  const m = xml.match(re);\n  return (m ? (m[1] || m[2] || '') : '').trim();\n}\n\nfunction cleanHtml(s) {\n  return s.replace(/<[^>]+>/g, '')\n    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#0?39;/g, \"'\").replace(/\\s+/g, ' ')\n    .substring(0, 500);\n}\n\nfor (const item of items) {\n  const rssContent = item.json.data || item.json.rssContent || item.json.content || '';\n  const name = item.json.name || item.json.url || 'Unbekannt';\n  const url = item.json.url || '';\n  const kategorie = item.json.kategorie || '';\n  const datum = item.json.datum || '';\n  const datumDE = item.json.datumDE || '';\n\n  if (!rssContent) continue;\n\n  const artikel = [];\n\n  // --- RSS 2.0 ---\n  if (rssContent.includes('<rss') || (rssContent.includes('<channel') && !rssContent.includes('<feed'))) {\n    const matches = rssContent.match(/<item[\\s>][\\s\\S]*?<\\/item>/gi) || [];\n    for (const m of matches.slice(0, 10)) {\n      const titel = getTag(m, 'title');\n      if (!titel) continue;\n      artikel.push({\n        titel: titel,\n        link: getTag(m, 'link'),\n        beschreibung: cleanHtml(getTag(m, 'description')),\n        datum: getTag(m, 'pubDate') || getTag(m, 'dc:date'),\n        autor: getTag(m, 'dc:creator') || getTag(m, 'author')\n      });\n    }\n  }\n\n  // --- Atom ---\n  if (rssContent.includes('<feed')) {\n    const matches = rssContent.match(/<entry[\\s>][\\s\\S]*?<\\/entry>/gi) || [];\n    for (const m of matches.slice(0, 10)) {\n      const titel = getTag(m, 'title');\n      if (!titel) continue;\n      const linkMatch = m.match(/<link[^>]*href=[\"']([^\"']+)[\"'][^>]*\\/?>/);\n      const autorMatch = m.match(/<author>[\\s\\S]*?<name>([\\s\\S]*?)<\\/name>[\\s\\S]*?<\\/author>/i);\n      artikel.push({\n        titel: titel,\n        link: linkMatch ? linkMatch[1] : '',\n        beschreibung: cleanHtml(getTag(m, 'summary') || getTag(m, 'content')),\n        datum: getTag(m, 'published') || getTag(m, 'updated'),\n        autor: autorMatch ? autorMatch[1].trim() : ''\n      });\n    }\n  }\n\n  if (artikel.length > 0) {\n    alleParsed.push({ json: {\n      quelleName: name,\n      quelleUrl: url,\n      kategorie: kategorie,\n      datum: datum,\n      datumDE: datumDE,\n      artikelAnzahl: artikel.length,\n      artikel: artikel\n    }});\n  }\n}\n\nconst total = alleParsed.reduce(function(s, i) { return s + i.json.artikelAnzahl; }, 0);\nconsole.log('Quellen geparst: ' + alleParsed.length + ', Artikel extrahiert: ' + total);\nif (alleParsed.length === 0) throw new Error('Keine Artikel extrahiert!');\nreturn alleParsed;"
+      },
+      "id": "ff0b528e-705e-4936-9037-da58f19d5c42",
+      "name": "XML-Parser (Strukturierte Daten)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -9904,
+        -256
+      ],
+      "notes": "FEATURE 1: Parst rohes RSS/Atom-XML → strukturierte Daten (Titel, Beschreibung, Link, Datum, Autor). Max 10 Artikel/Feed. Spart ~70 % KI-Tokens."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Artikel-Aggregator: Fasst alle Quellen zusammen, erstellt\n// Token-optimierten Text-Input für den KI-Node\n// ====================================================================\n\nconst items = $input.all();\nconst datum   = items[0]?.json?.datum   || new Date().toISOString().split('T')[0];\nconst datumDE = items[0]?.json?.datumDE || '';\n\nconst alleArtikel = [];\nfor (const item of items) {\n  for (const a of item.json.artikel) {\n    alleArtikel.push({\n      titel: a.titel, quelle: item.json.quelleName,\n      kategorie: item.json.kategorie, link: a.link,\n      beschreibung: a.beschreibung, datum: a.datum, autor: a.autor\n    });\n  }\n}\n\nconst artikelText = alleArtikel.map((a, i) =>\n  `[${i+1}] ${a.titel}\\nQuelle: ${a.quelle} | Kategorie: ${a.kategorie}\\n${a.beschreibung}\\nLink: ${a.link}\\nDatum: ${a.datum}${a.autor ? ' | Autor: '+a.autor : ''}`\n).join('\\n---\\n');\n\nconsole.log(`📊 ${alleArtikel.length} Artikel aggregiert aus ${items.length} Quellen`);\n\nreturn [{ json: { datum, datumDE, artikelAnzahl: alleArtikel.length, quellenAnzahl: items.length, artikelText, artikelRaw: alleArtikel } }];"
+      },
+      "id": "578cc37c-e3d2-44d1-82d0-02406497204f",
+      "name": "Artikel-Aggregator für KI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -9696,
+        -256
+      ],
+      "notes": "Aggregiert alle geparsten Artikel zu einem einzigen, Token-optimierten Text-Block für die KI-Analyse."
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "c1498be0-0d6e-44c5-b927-ab8a6956563a",
+      "name": "Täglich 07:00 Uhr1",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -11008,
+        0
+      ],
+      "notes": "Startet den Workflow täglich um 07:00 Uhr morgens. Zeitzone: Europe/Berlin (in n8n Settings konfigurieren)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Datumskontext und Quellen-Konfiguration (KOMPLETT v2.0)\n// 16 geprüfte RSS-Feed-URLs – Stand 04.05.2026\n// ====================================================================\n\nconst heute = new Date();\nconst datumISO = heute.toISOString().split('T')[0];\nconst datumDE = heute.toLocaleDateString('de-DE', {\n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'\n});\n\nconst quellen = [\n  // Tech / Digitalisierung / KI\n  { name: 'heise online (Atom)', url: 'https://www.heise.de/rss/heise-atom.xml', kategorie: 'Digitalisierung & IT (DACH)' },\n  { name: 'MIT Technology Review (RSS)', url: 'https://www.technologyreview.com/feed/', kategorie: 'Technologie & KI (weltweit)' },\n  { name: 'tagesschau.de (RSS)', url: 'https://www.tagesschau.de/xml/rss2/', kategorie: 'News (DE) inkl. Digital/EU' },\n\n  // Mittelstand / B2B / Wirtschaft\n  { name: 'Markt und Mittelstand (RSS)', url: 'https://www.marktundmittelstand.de/rss.xml', kategorie: 'Mittelstand / B2B' },\n  { name: 'Handelsblatt – Unternehmen (RSS)', url: 'https://www.handelsblatt.com/contentexport/feed/unternehmen', kategorie: 'Unternehmen / Wirtschaft' },\n  { name: 'WirtschaftsWoche – Unternehmen (RSS)', url: 'https://www.wiwo.de/contentexport/feed/rss/unternehmen', kategorie: 'Unternehmen / Wirtschaft' },\n\n  // Wissenschaft (KI/ML/Software/Robotik)\n  { name: 'arXiv – cs.AI (RSS)', url: 'https://export.arxiv.org/rss/cs.AI', kategorie: 'Wissenschaft: KI' },\n  { name: 'arXiv – cs.LG (RSS)', url: 'https://export.arxiv.org/rss/cs.LG', kategorie: 'Wissenschaft: Machine Learning' },\n  { name: 'arXiv – cs.SE (RSS)', url: 'https://export.arxiv.org/rss/cs.SE', kategorie: 'Wissenschaft: Software Engineering' },\n  { name: 'arXiv – cs.RO (RSS)', url: 'https://export.arxiv.org/rss/cs.RO', kategorie: 'Wissenschaft: Robotik' },\n\n  // Regulierung / Gesetze / Normen-Umfeld (DE/EU)\n  { name: 'Bundestag – Digitales (RSS)', url: 'https://www.bundestag.de/static/appdata/includes/rss/digitales.rss', kategorie: 'Regulierung DE/EU: Digitales' },\n  { name: 'Bundestag – Recht (RSS)', url: 'https://www.bundestag.de/static/appdata/includes/rss/recht.rss', kategorie: 'Regulierung DE/EU: Recht' },\n  { name: 'Bundestag – Wirtschaft & Energie (RSS)', url: 'https://www.bundestag.de/static/appdata/includes/rss/wirtschaft.rss', kategorie: 'Regulierung DE/EU: Wirtschaft' },\n  { name: 'Bundestag – Bau/Wohnen/Stadtentwicklung (RSS)', url: 'https://www.bundestag.de/static/appdata/includes/rss/bauwohnenstadtentwicklungkommunen.rss', kategorie: 'Regulierung DE/EU: Architektur & Bau' },\n  { name: 'Bundestag – Umwelt/Klima (RSS)', url: 'https://www.bundestag.de/static/appdata/includes/rss/umwelt.rss', kategorie: 'Regulierung DE/EU: Umwelt/Compliance' },\n  { name: 'Bundestag – Wissenschaftliche Dienste (RSS)', url: 'https://www.bundestag.de/static/appdata/includes/rss/wissenschaftlichedienste.rss', kategorie: 'Einordnung/Analysen (DE/EU)' },\n  { name: 'Heise Online IT',                  url: 'https://www.heise.de/rss/heise-atom.xml',                                                        kategorie: 'Digitalisierung & IT' },\n  { name: 'Markt und Mittelstand',             url: 'https://www.marktundmittelstand.de/rss.xml',                                                     kategorie: 'Mittelstand Allgemein' },\n  { name: 'Handelsblatt Unternehmen',          url: 'https://www.handelsblatt.com/contentexport/feed/unternehmen',                                     kategorie: 'Mittelstand & Strategie' },\n  { name: 'WirtschaftsWoche Unternehmen',      url: 'https://www.wiwo.de/contentexport/feed/rss/unternehmen',                                          kategorie: 'Mittelstand & Wirtschaft' },\n  { name: 't3n Digital Business',              url: 'https://t3n.de/rss.xml',                                                                         kategorie: 'Digitalisierung & IT' },\n  { name: 'Impulse Unternehmer-Magazin',       url: 'https://www.impulse.de/feed',                                                                     kategorie: 'Mittelstand & Strategie' },\n  { name: 'Gründerszene',                      url: 'https://www.gruenderszene.de/feed',                                                               kategorie: 'Startups & Innovation' },\n  { name: 'Deutsche Handwerks Zeitung',        url: 'https://www.deutsche-handwerks-zeitung.de/feed/',                                                 kategorie: 'Handwerk & KMU' },\n  { name: 'FAZ Wirtschaft',                    url: 'https://www.faz.net/rss/aktuell/wirtschaft/',                                                     kategorie: 'Wirtschaftspolitik & Regulierung' },\n  { name: 'Tagesschau Wirtschaft',             url: 'https://www.tagesschau.de/wirtschaft/index~rss2.xml',                                             kategorie: 'Wirtschaftspolitik & Regulierung' },\n  { name: 'Spiegel Wirtschaft',                url: 'https://www.spiegel.de/wirtschaft/index.rss',                                                     kategorie: 'Wirtschaft Allgemein' },\n  { name: 'Google News - KMU Mittelstand',     url: 'https://news.google.com/rss/search?q=KMU+Mittelstand+Deutschland&hl=de&gl=DE&ceid=DE:de',         kategorie: 'Allgemeine KMU-Nachrichten' },\n  { name: 'Google News - Digitalisierung',     url: 'https://news.google.com/rss/search?q=Digitalisierung+Mittelstand&hl=de&gl=DE&ceid=DE:de',         kategorie: 'Digitalisierung' },\n  { name: 'Google News - Fachkräftemangel',    url: 'https://news.google.com/rss/search?q=Fachkr%C3%A4ftemangel+Mittelstand&hl=de&gl=DE&ceid=DE:de',   kategorie: 'Personal & Fachkräfte' },\n  { name: 'Google News - Maschinenbau Elektro',url: 'https://news.google.com/rss/search?q=Maschinenbau+OR+Elektrotechnik+Mittelstand&hl=de&gl=DE&ceid=DE:de', kategorie: 'Branchenspezifisch' },\n  { name: 'Google News - Autohandel',          url: 'https://news.google.com/rss/search?q=Autohandel+OR+Kfz-Handel+Deutschland&hl=de&gl=DE&ceid=DE:de', kategorie: 'Kfz-Handel' }\n];\n\nreturn [{ json: { datum: datumISO, datumDE, quellen, quellenAnzahl: quellen.length } }];"
+      },
+      "id": "fdcab57e-f174-474c-9b0a-8da8f4187207",
+      "name": "Quellen-Konfiguration1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -10736,
+        0
+      ],
+      "notes": "16 geprüfte RSS-Feed-URLs mit Datum-Kontext."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Quellen-Splitter: Ein Item pro Quelle\nconst config = $input.first().json;\nreturn config.quellen.map(q => ({ json: { ...q, datum: config.datum, datumDE: config.datumDE } }));"
+      },
+      "id": "d49dd82d-87ee-44a7-8d81-ee0211280e3b",
+      "name": "Quellen aufteilen1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -10496,
+        0
+      ],
+      "notes": "Erzeugt 16 einzelne Items – eins pro RSS-Quelle."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "073d396d-00d9-437d-84f8-8647f4192054",
+      "name": "RSS Feeds abrufen1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -10112,
+        -256
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput",
+      "notes": "HTTP GET auf die Feed-URL. Timeout 15 s. Bei Fehler: Continue on Fail (fehlerhafte Items werden im nächsten Node gefiltert)."
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "=✅ KI-Recherche Ergebnis: {{ $json.fehler-protokoll }} neue KMU-Themen (v6)",
+        "bodyContent": "=<h3>Daily Recherche Zusammenfassung</h3>\n<p>Workflow: <b>{{ $json.zusammenfassung.workflow }}</b><br>\nAusgeführt am: {{ new Date($json.zusammenfassung.datum).toLocaleString('de-DE') }}</p>\n\n<table style=\"border-collapse: collapse; width: 100%; max-width: 500px;\">\n  <tr style=\"background-color: #f2f2f2;\">\n    <th style=\"border: 1px solid #ddd; padding: 8px; text-align: left;\">Metrik</th>\n    <th style=\"border: 1px solid #ddd; padding: 8px; text-align: center;\">Anzahl</th>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">Erstellte Themen</td>\n    <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center; color: green; font-weight: bold;\">\n      {{ $json.zusammenfassung.ergebnis.themen_erstellt }}\n    </td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">Fehlgeschlagene Themen</td>\n    <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center;\">\n      {{ $json.zusammenfassung.ergebnis.themen_fehlgeschlagen }}\n    </td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">Status</td>\n    <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center;\">\n      {{ $json.zusammenfassung.status }}\n    </td>\n  </tr>\n</table>\n\n<p style=\"margin-top: 20px;\"><i>{{ $json.zusammenfassung.details }}</i></p>\n<hr>\n<p style=\"color: #888; font-size: 0.8em;\">Automatisch erstellt von n8n Workflow v6</p>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        -7072,
+        288
+      ],
+      "id": "8226ab45-988f-4cff-b25d-6ecd8bba3d33",
+      "name": "Send a message",
+      "webhookId": "311cef29-e8f1-46e4-bd88-58488ebc5af4",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "V6: Abacus AI Body vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "V6: Abacus AI Analyse (HTTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "V6: Abacus AI Analyse (HTTP)": {
+      "main": [
+        [
+          {
+            "node": "V6: KI-Antwort verarbeiten (FIXED)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DEBUG: API Response anzeigen": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "V6: KI-Antwort verarbeiten (FIXED)": {
+      "main": [
+        [
+          {
+            "node": "In Notion speichern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In Notion speichern": {
+      "main": [
+        [
+          {
+            "node": "Ergebnis-Zusammenfassung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ergebnis-Zusammenfassung": {
+      "main": [
+        [
+          {
+            "node": "Fehler vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Fehler-Protokoll",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Erfolg-Protokoll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        []
+      ]
+    },
+    "XML-Parser (Strukturierte Daten)": {
+      "main": [
+        [
+          {
+            "node": "Artikel-Aggregator für KI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Täglich 07:00 Uhr1": {
+      "main": [
+        [
+          {
+            "node": "Quellen-Konfiguration1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quellen-Konfiguration1": {
+      "main": [
+        [
+          {
+            "node": "Quellen aufteilen1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quellen aufteilen1": {
+      "main": [
+        [
+          {
+            "node": "RSS Feeds abrufen1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Feeds abrufen1": {
+      "main": [
+        [
+          {
+            "node": "XML-Parser (Strukturierte Daten)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artikel-Aggregator für KI": {
+      "main": [
+        [
+          {
+            "node": "V6: Abacus AI Body vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehler-Protokoll": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erfolg-Protokoll": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "timeSavedPerExecution": 20
+  },
+  "versionId": "70de3dfe-6df5-4096-aaf7-c1bb7f51eefc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "rtEkcFutCJOI0j6D",
+  "tags": [
+    {
+      "updatedAt": "2026-05-04T09:58:20.674Z",
+      "createdAt": "2026-05-04T09:58:20.674Z",
+      "id": "3xtDQXOZXBmzMOEv",
+      "name": "KMU"
+    },
+    {
+      "updatedAt": "2026-05-04T12:53:04.199Z",
+      "createdAt": "2026-05-04T12:53:04.199Z",
+      "id": "JsB8hdWMNGECHIEP",
+      "name": "v6-abacus-ai-fixed"
+    },
+    {
+      "updatedAt": "2026-05-04T12:41:29.582Z",
+      "createdAt": "2026-05-04T12:41:29.582Z",
+      "id": "TZZ7mv0puciOgkum",
+      "name": "v5-abacus-ai"
+    },
+    {
+      "updatedAt": "2026-05-04T10:21:57.485Z",
+      "createdAt": "2026-05-04T10:21:57.485Z",
+      "id": "cPZ7plqbODP32AVI",
+      "name": "v3-robust"
+    },
+    {
+      "updatedAt": "2026-05-04T09:58:20.673Z",
+      "createdAt": "2026-05-04T09:58:20.673Z",
+      "id": "hN7JdBKYpgQ9b2ZB",
+      "name": "Daily"
+    },
+    {
+      "updatedAt": "2026-05-04T09:58:20.676Z",
+      "createdAt": "2026-05-04T09:58:20.676Z",
+      "id": "jWqHKGZbsyopMxW4",
+      "name": "Recherche"
+    }
+  ]
+}

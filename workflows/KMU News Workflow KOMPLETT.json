@@ -1,0 +1,350 @@
+{
+  "name": "KMU News Workflow KOMPLETT",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "a950ddf7-eeb2-4ce2-a775-6e23c696d618",
+      "name": "Täglich 07:00 Uhr",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2160,
+        368
+      ],
+      "notes": "Startet den Workflow täglich um 07:00 Uhr morgens. Zeitzone: Europe/Berlin (in n8n Settings konfigurieren)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Datumskontext und Quellen-Konfiguration (KOMPLETT v2.0)\n// 16 geprüfte RSS-Feed-URLs – Stand 04.05.2026\n// ====================================================================\n\nconst heute = new Date();\nconst datumISO = heute.toISOString().split('T')[0];\nconst datumDE = heute.toLocaleDateString('de-DE', {\n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'\n});\n\nconst quellen = [\n  { name: 'Heise Online IT',                  url: 'https://www.heise.de/rss/heise-atom.xml',                                                        kategorie: 'Digitalisierung & IT' },\n  { name: 'Markt und Mittelstand',             url: 'https://www.marktundmittelstand.de/rss.xml',                                                     kategorie: 'Mittelstand Allgemein' },\n  { name: 'Handelsblatt Unternehmen',          url: 'https://www.handelsblatt.com/contentexport/feed/unternehmen',                                     kategorie: 'Mittelstand & Strategie' },\n  { name: 'WirtschaftsWoche Unternehmen',      url: 'https://www.wiwo.de/contentexport/feed/rss/unternehmen',                                          kategorie: 'Mittelstand & Wirtschaft' },\n  { name: 't3n Digital Business',              url: 'https://t3n.de/rss.xml',                                                                         kategorie: 'Digitalisierung & IT' },\n  { name: 'Impulse Unternehmer-Magazin',       url: 'https://www.impulse.de/feed',                                                                     kategorie: 'Mittelstand & Strategie' },\n  { name: 'Gründerszene',                      url: 'https://www.gruenderszene.de/feed',                                                               kategorie: 'Startups & Innovation' },\n  { name: 'Deutsche Handwerks Zeitung',        url: 'https://www.deutsche-handwerks-zeitung.de/feed/',                                                 kategorie: 'Handwerk & KMU' },\n  { name: 'FAZ Wirtschaft',                    url: 'https://www.faz.net/rss/aktuell/wirtschaft/',                                                     kategorie: 'Wirtschaftspolitik & Regulierung' },\n  { name: 'Tagesschau Wirtschaft',             url: 'https://www.tagesschau.de/wirtschaft/index~rss2.xml',                                             kategorie: 'Wirtschaftspolitik & Regulierung' },\n  { name: 'Spiegel Wirtschaft',                url: 'https://www.spiegel.de/wirtschaft/index.rss',                                                     kategorie: 'Wirtschaft Allgemein' },\n  { name: 'Google News - KMU Mittelstand',     url: 'https://news.google.com/rss/search?q=KMU+Mittelstand+Deutschland&hl=de&gl=DE&ceid=DE:de',         kategorie: 'Allgemeine KMU-Nachrichten' },\n  { name: 'Google News - Digitalisierung',     url: 'https://news.google.com/rss/search?q=Digitalisierung+Mittelstand&hl=de&gl=DE&ceid=DE:de',         kategorie: 'Digitalisierung' },\n  { name: 'Google News - Fachkräftemangel',    url: 'https://news.google.com/rss/search?q=Fachkr%C3%A4ftemangel+Mittelstand&hl=de&gl=DE&ceid=DE:de',   kategorie: 'Personal & Fachkräfte' },\n  { name: 'Google News - Maschinenbau Elektro',url: 'https://news.google.com/rss/search?q=Maschinenbau+OR+Elektrotechnik+Mittelstand&hl=de&gl=DE&ceid=DE:de', kategorie: 'Branchenspezifisch' },\n  { name: 'Google News - Autohandel',          url: 'https://news.google.com/rss/search?q=Autohandel+OR+Kfz-Handel+Deutschland&hl=de&gl=DE&ceid=DE:de', kategorie: 'Kfz-Handel' }\n];\n\nreturn [{ json: { datum: datumISO, datumDE, quellen, quellenAnzahl: quellen.length } }];"
+      },
+      "id": "d5353ca2-f4d5-4028-8e99-509b25c438f1",
+      "name": "Quellen-Konfiguration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2432,
+        368
+      ],
+      "notes": "16 geprüfte RSS-Feed-URLs mit Datum-Kontext."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Quellen-Splitter: Ein Item pro Quelle\nconst config = $input.first().json;\nreturn config.quellen.map(q => ({ json: { ...q, datum: config.datum, datumDE: config.datumDE } }));"
+      },
+      "id": "4566d364-a288-4f0b-b35a-f889ac7acf6b",
+      "name": "Quellen aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        368
+      ],
+      "notes": "Erzeugt 16 einzelne Items – eins pro RSS-Quelle."
+    },
+    {
+      "parameters": {
+        "batchSize": 3,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "4ef9f377-a582-4f8f-a86a-b1aa7bd38a0a",
+      "name": "Rate Limiting (3er-Batches)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2816,
+        928
+      ],
+      "disabled": true,
+      "notes": "FEATURE 2: Rate Limiting – verarbeitet 16 Quellen in 3er-Batches. Verhindert Server-Blockaden. Output 0 = aktueller Batch, Output 1 = fertig (alle Batches durchlaufen)."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 15000
+        }
+      },
+      "id": "ba48b612-1ae1-4b9c-9b36-57423c9c84b4",
+      "name": "RSS Feeds abrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3056,
+        112
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput",
+      "notes": "HTTP GET auf die Feed-URL. Timeout 15 s. Bei Fehler: Continue on Fail (fehlerhafte Items werden im nächsten Node gefiltert)."
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "id": "3bc5f40f-5ef1-49d0-aaf6-81645433935c",
+      "name": "2s Pause zwischen Batches",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3072,
+        1056
+      ],
+      "webhookId": "ce25b873-9999-45e1-9419-1073c78fb1de",
+      "disabled": true,
+      "notes": "FEATURE 2: 2 Sekunden Pause nach jedem Batch, bevor der nächste Batch gestartet wird."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Fehlerfilter & RSS-XML-Validierung\n// Filtert HTTP-Fehler, leere Antworten und Nicht-XML heraus\n// ====================================================================\n\nconst items = $input.all();\nconst erfolgreiche = [];\nconst fehlerhafte = [];\n\nfor (const item of items) {\n  const data = item.json;\n\n  if (data.error || (data.statusCode && data.statusCode >= 400)) {\n    fehlerhafte.push({ name: data.name || '?', fehler: data.error?.message || `HTTP ${data.statusCode}` });\n    continue;\n  }\n\n  const body = typeof data.data === 'string' ? data.data\n             : typeof data.response === 'string' ? data.response\n             : typeof data.body === 'string' ? data.body : '';\n\n  if (!body || body.trim().length === 0) {\n    fehlerhafte.push({ name: data.name || '?', fehler: 'Leere Antwort' });\n    continue;\n  }\n\n  if (!(body.includes('<rss') || body.includes('<feed') || body.includes('<?xml'))) {\n    fehlerhafte.push({ name: data.name || '?', fehler: 'Kein RSS/XML' });\n    continue;\n  }\n\n  erfolgreiche.push({ json: {\n    name: data.name, url: data.url, kategorie: data.kategorie,\n    datum: data.datum, datumDE: data.datumDE, rssContent: body\n  }});\n}\n\nif (fehlerhafte.length > 0) {\n  console.log(`⚠️ ${fehlerhafte.length} Feeds fehlgeschlagen:`);\n  fehlerhafte.forEach(f => console.log(`  ❌ ${f.name}: ${f.fehler}`));\n}\nconsole.log(`✅ ${erfolgreiche.length} Feeds erfolgreich`);\n\nif (erfolgreiche.length === 0) {\n  throw new Error(`Alle ${items.length} Feeds fehlgeschlagen!`);\n}\n\nreturn erfolgreiche;"
+      },
+      "id": "33d4f1fb-d74b-4aca-8fc4-d972f742233c",
+      "name": "Fehlerfilter & Validierung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3248,
+        640
+      ],
+      "disabled": true,
+      "notes": "Filtert HTTP-Fehler, leere Antworten und Nicht-XML heraus. Nur valide RSS/Atom-Feeds gehen weiter."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// FEATURE 1: XML-Parser - Strukturierte Daten aus RSS/Atom XML\n// Extrahiert pro Feed max. 10 Artikel: Titel, Beschreibung, Link,\n// Datum, Autor. Spart KI-Tokens durch Vorverarbeitung.\n// ====================================================================\n\nconst items = $input.all();\nconst alleParsed = [];\n\nfunction getTag(xml, tag) {\n  const re = new RegExp(\n    '<' + tag + '[^>]*><!\\\\[CDATA\\\\[([\\\\s\\\\S]*?)\\\\]\\\\]><\\\\/' + tag + '>'\n    + '|<' + tag + '[^>]*>([\\\\s\\\\S]*?)<\\\\/' + tag + '>', 'i');\n  const m = xml.match(re);\n  return (m ? (m[1] || m[2] || '') : '').trim();\n}\n\nfunction cleanHtml(s) {\n  return s.replace(/<[^>]+>/g, '')\n    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')\n    .replace(/&quot;/g, '\"').replace(/&#0?39;/g, \"'\").replace(/\\s+/g, ' ')\n    .substring(0, 500);\n}\n\nfor (const item of items) {\n  const rssContent = item.json.data || item.json.rssContent || item.json.content || '';\n  const name = item.json.name || item.json.url || 'Unbekannt';\n  const url = item.json.url || '';\n  const kategorie = item.json.kategorie || '';\n  const datum = item.json.datum || '';\n  const datumDE = item.json.datumDE || '';\n\n  if (!rssContent) continue;\n\n  const artikel = [];\n\n  // --- RSS 2.0 ---\n  if (rssContent.includes('<rss') || (rssContent.includes('<channel') && !rssContent.includes('<feed'))) {\n    const matches = rssContent.match(/<item[\\s>][\\s\\S]*?<\\/item>/gi) || [];\n    for (const m of matches.slice(0, 10)) {\n      const titel = getTag(m, 'title');\n      if (!titel) continue;\n      artikel.push({\n        titel: titel,\n        link: getTag(m, 'link'),\n        beschreibung: cleanHtml(getTag(m, 'description')),\n        datum: getTag(m, 'pubDate') || getTag(m, 'dc:date'),\n        autor: getTag(m, 'dc:creator') || getTag(m, 'author')\n      });\n    }\n  }\n\n  // --- Atom ---\n  if (rssContent.includes('<feed')) {\n    const matches = rssContent.match(/<entry[\\s>][\\s\\S]*?<\\/entry>/gi) || [];\n    for (const m of matches.slice(0, 10)) {\n      const titel = getTag(m, 'title');\n      if (!titel) continue;\n      const linkMatch = m.match(/<link[^>]*href=[\"']([^\"']+)[\"'][^>]*\\/?>/);\n      const autorMatch = m.match(/<author>[\\s\\S]*?<name>([\\s\\S]*?)<\\/name>[\\s\\S]*?<\\/author>/i);\n      artikel.push({\n        titel: titel,\n        link: linkMatch ? linkMatch[1] : '',\n        beschreibung: cleanHtml(getTag(m, 'summary') || getTag(m, 'content')),\n        datum: getTag(m, 'published') || getTag(m, 'updated'),\n        autor: autorMatch ? autorMatch[1].trim() : ''\n      });\n    }\n  }\n\n  if (artikel.length > 0) {\n    alleParsed.push({ json: {\n      quelleName: name,\n      quelleUrl: url,\n      kategorie: kategorie,\n      datum: datum,\n      datumDE: datumDE,\n      artikelAnzahl: artikel.length,\n      artikel: artikel\n    }});\n  }\n}\n\nconst total = alleParsed.reduce(function(s, i) { return s + i.json.artikelAnzahl; }, 0);\nconsole.log('Quellen geparst: ' + alleParsed.length + ', Artikel extrahiert: ' + total);\nif (alleParsed.length === 0) throw new Error('Keine Artikel extrahiert!');\nreturn alleParsed;"
+      },
+      "id": "ddef76fb-3c80-4575-b625-9df25b70acfa",
+      "name": "XML-Parser (Strukturierte Daten)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3264,
+        112
+      ],
+      "notes": "FEATURE 1: Parst rohes RSS/Atom-XML → strukturierte Daten (Titel, Beschreibung, Link, Datum, Autor). Max 10 Artikel/Feed. Spart ~70 % KI-Tokens."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Artikel-Aggregator: Fasst alle Quellen zusammen, erstellt\n// Token-optimierten Text-Input für den KI-Node\n// ====================================================================\n\nconst items = $input.all();\nconst datum   = items[0]?.json?.datum   || new Date().toISOString().split('T')[0];\nconst datumDE = items[0]?.json?.datumDE || '';\n\nconst alleArtikel = [];\nfor (const item of items) {\n  for (const a of item.json.artikel) {\n    alleArtikel.push({\n      titel: a.titel, quelle: item.json.quelleName,\n      kategorie: item.json.kategorie, link: a.link,\n      beschreibung: a.beschreibung, datum: a.datum, autor: a.autor\n    });\n  }\n}\n\nconst artikelText = alleArtikel.map((a, i) =>\n  `[${i+1}] ${a.titel}\\nQuelle: ${a.quelle} | Kategorie: ${a.kategorie}\\n${a.beschreibung}\\nLink: ${a.link}\\nDatum: ${a.datum}${a.autor ? ' | Autor: '+a.autor : ''}`\n).join('\\n---\\n');\n\nconsole.log(`📊 ${alleArtikel.length} Artikel aggregiert aus ${items.length} Quellen`);\n\nreturn [{ json: { datum, datumDE, artikelAnzahl: alleArtikel.length, quellenAnzahl: items.length, artikelText, artikelRaw: alleArtikel } }];"
+      },
+      "id": "443aa3bb-7a2a-4859-a876-0c5bec60c9e4",
+      "name": "Artikel-Aggregator für KI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3472,
+        112
+      ],
+      "notes": "Aggregiert alle geparsten Artikel zu einem einzigen, Token-optimierten Text-Block für die KI-Analyse."
+    },
+    {
+      "parameters": {
+        "resource": "chat"
+      },
+      "id": "e580b969-dc92-476d-8add-4653d8f7513b",
+      "name": "KI-Analyse (OpenAI)",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        4032,
+        640
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "zt0A55Q343tJiMxk",
+          "name": "OpenAI account"
+        }
+      },
+      "notes": "FEATURE 4: GPT-4o-mini analysiert geparste Artikel. Temperature 0.3 für konsistente JSON-Ausgabe. ⚠️ OpenAI Credentials müssen in n8n unter Settings → Credentials konfiguriert werden!"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// FEATURE 5: KI-Ergebnisse als JSON-Datei speichern\n// Pfad: /tmp/kmu_news_YYYY-MM-DD.json\n// ====================================================================\n\nconst input = $input.first().json;\nlet kiAntwort;\n\nconst raw = input.message?.content || input.text || input.output || JSON.stringify(input);\n\ntry {\n  if (typeof raw === 'string') {\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    kiAntwort = m ? JSON.parse(m[0]) : JSON.parse(raw);\n  } else {\n    kiAntwort = raw;\n  }\n} catch (e) {\n  console.log('⚠️ JSON-Parse fehlgeschlagen, speichere Rohdaten');\n  kiAntwort = {\n    datum: new Date().toISOString().split('T')[0],\n    fehler: 'KI-Antwort nicht parsbar',\n    rohdaten: String(raw).substring(0, 5000)\n  };\n}\n\nconst ergebnis = {\n  meta: {\n    workflow: 'KMU News Workflow KOMPLETT',\n    erstellt_am: new Date().toISOString(),\n    version: '2.0'\n  },\n  ergebnis: kiAntwort\n};\n\nconst datum = kiAntwort.datum || new Date().toISOString().split('T')[0];\nconst pfad  = `/tmp/kmu_news_${datum}.json`;\n\nrequire('fs').writeFileSync(pfad, JSON.stringify(ergebnis, null, 2), 'utf8');\n\nconsole.log(`💾 Gespeichert: ${pfad}`);\nconsole.log(`📰 ${kiAntwort.nachrichten?.length || 0} Nachrichten, ${kiAntwort.trends?.length || 0} Trends`);\n\nreturn [{ json: {\n  status: 'gespeichert', dateipfad: pfad,\n  nachrichtenAnzahl: kiAntwort.nachrichten?.length || 0,\n  ergebnis\n}}];"
+      },
+      "id": "de04f926-56c3-4cbb-8b81-d0fd7ceb0c33",
+      "name": "Ergebnisse speichern (JSON)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4288,
+        640
+      ],
+      "notes": "FEATURE 5: Speichert KI-Ergebnisse als /tmp/kmu_news_YYYY-MM-DD.json mit Workflow-Metadaten und Zeitstempel."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://routellm.abacus.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": {{ JSON.stringify(\"Du bist ein erfahrener Berater und Sparringspartner für CEOs von KMU in Deutschland.\\nDu hast 28 Jahre Erfahrung in Automotive, Elektronik und Software.\\nDu moderierst Peer Advisory Boards und kennst die echten Herausforderungen von Unternehmern.\\nDu schreibst sachlich, analytisch, klar und ohne Marketing-Floskeln.\\nNutze die gegebene Strukturvorlage als Leitplanke, aber schreibe natürlich und authentisch.\\nSchreibe ausschließlich auf Deutsch.\\nVermeide Superlative, Buzzwords und typische KI-Formulierungen.\\nDer Post darf maximal 300 bis 350 Wörter und maximal 1900 bis 2000 Zeichen lang sein. Wenn du diese Grenzen nicht einhalten kannst, kürze den Inhalt, nicht die Qualität. Halte diese Grenze strikt ein.\\nSchreibe in kurzen Absätzen, nutze keine Superlative, bleibe präzise.\") \n}}\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\n        \"Erstelle einen LinkedIn-Post mit folgendem Kontext:\\n\\n\" +\n        \"Thema: \" + $json.thema + \"\\n\\n\" +\n        \"Beitragstyp: \" + $json.typ + \"\\n\\n\" +\n        \"Strukturvorlage (als Gerüst verwenden):\\n\" + $json.template + \"\\n\\n\" +\n        \"Meine eigenen Gedanken und Kernaussagen (zwingend berücksichtigen):\\n\" +\n        ($json.blog_input ? $json.blog_input : \"Keine zusätzlichen Stichpunkte vorhanden.\") + \"\\n\\n\" +\n        \"Anforderungen:\\n\" +\n        \"- Zielgruppe sind CEOs von KMU in Deutschland\\n\" +\n        \"- Schreibe analytisch, sachlich und auf Augenhöhe\\n\" +\n        \"- Keine allgemeinen Floskeln oder KI-typischen Phrasen\\n\" +\n        \"- Kurze, gut lesbare Absätze (max. 3 Zeilen pro Absatz)\\n\" +\n        \"- Trenne jeden Absatz mit einer Leerzeile für klare Lesbarkeit\\n\" +\n        \"- Konkrete Aussagen statt vager Begriffe\\n\" +\n        \"- Integriere meine Stichpunkte sinnvoll in die Argumentation\\n\" +\n        \"- Entwickle meine Gedanken weiter – wiederhole sie nicht einfach\\n\" +\n        \"- Wenn Stichpunkte vorhanden: beginne mit der stärksten Aussage daraus\\n\" +\n        \"- Maximale Länge: 300 bis 350 Wörter und maximal 1.900 Zeichen – nicht mehr, nicht weniger\\n\\n\" +\n        \"Typ-spezifische Logik:\\n\\n\" +\n        \"Wenn Beitragstyp = Board-Bericht:\\n\" +\n        \"→ Schreibe als anonymisierte Praxiserfahrung aus einem Unternehmerboard\\n\" +\n        \"→ Struktur: Beobachtung → Diskussion → Erkenntnis → Denkanstoß\\n\\n\" +\n        \"Wenn Beitragstyp = These:\\n\" +\n        \"→ Formuliere eine klare, provokante aber sachliche Position\\n\" +\n        \"→ Struktur: These → Begründung → Konsequenz für den CEO\\n\\n\" +\n        \"Wenn Beitragstyp = Fach-Tip:\\n\" +\n        \"→ Liefere einen konkreten, umsetzbaren Denkanstoß\\n\" +\n        \"→ Struktur: Problem → Analyse → Lösung → nächster Schritt\\n\\n\" +\n        \"Gib ausschließlich den fertigen LinkedIn-Post zurück.\\n\" +\n        \"Kein Kommentar, keine Erklärung, nur den Post.\"\n      ) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4000,
+        368
+      ],
+      "id": "43d1547c-8883-45f8-ac84-5d8ce216f425",
+      "name": "AI_Post_HTTP",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vCMXURNhdFBDnFbG",
+          "name": "Header Auth account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Täglich 07:00 Uhr": {
+      "main": [
+        [
+          {
+            "node": "Quellen-Konfiguration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quellen-Konfiguration": {
+      "main": [
+        [
+          {
+            "node": "Quellen aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quellen aufteilen": {
+      "main": [
+        [
+          {
+            "node": "RSS Feeds abrufen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limiting (3er-Batches)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Fehlerfilter & Validierung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Feeds abrufen": {
+      "main": [
+        [
+          {
+            "node": "XML-Parser (Strukturierte Daten)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2s Pause zwischen Batches": {
+      "main": [
+        [
+          {
+            "node": "Rate Limiting (3er-Batches)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehlerfilter & Validierung": {
+      "main": [
+        [
+          {
+            "node": "XML-Parser (Strukturierte Daten)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "XML-Parser (Strukturierte Daten)": {
+      "main": [
+        [
+          {
+            "node": "Artikel-Aggregator für KI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Artikel-Aggregator für KI": {
+      "main": [
+        [
+          {
+            "node": "KI-Analyse (OpenAI)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI_Post_HTTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "KI-Analyse (OpenAI)": {
+      "main": [
+        [
+          {
+            "node": "Ergebnisse speichern (JSON)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI_Post_HTTP": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c602069e-75c0-4f37-a8da-c64dfc179c24",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "oxLJFRcnMY8oHZvg",
+  "tags": []
+}
