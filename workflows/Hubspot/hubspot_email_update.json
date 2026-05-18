@@ -47,6 +47,7 @@
               "filtersUi": {
                 "filterValues": [
                   {
+                    "propertyName": "email|string",
                     "value": "={{ $json.from.emailAddress.address }}"
                   }
                 ]
