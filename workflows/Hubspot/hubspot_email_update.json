@@ -42,7 +42,7 @@
             {
               "id": "set-contact-email",
               "name": "contactEmail",
-              "value": "={{ ($json.from.emailAddress.address || '').indexOf('@') !== -1 ? $json.from.emailAddress.address : (($json.toRecipients || [])[0] || {}).emailAddress?.address || '' }}",
+              "value": "={{ ($json.from.emailAddress.address || '').includes('@blboardsolutions.de') ? (($json.toRecipients || [])[0] || {}).emailAddress?.address || '' : ($json.from.emailAddress.address || '') }}",
               "type": "string"
             }
           ]
