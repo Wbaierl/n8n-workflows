@@ -54,7 +54,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst flat = [];\n\nfor (const item of items) {\n  const notionPageId = item.json.id;\n  const props = item.json;\n\n  // DB Kunden Relation\n  const dbKunden = props.property_db_kunden || [];\n  const kundenIds = Array.isArray(dbKunden) ? dbKunden : [dbKunden];\n\n  // Gespeicherte Blog-IDs (Format: \"KPA:12345,KPB:67890\")\n  const confBlogIDs = props.property_confluence_blog_i_ds\n    || props.property_confluenceblogids\n    || props.property_confluence_blog_ids\n    || '';\n\n  if (kundenIds.length === 0) continue;\n\n  for (const kundePageId of kundenIds) {\n    if (!kundePageId) continue;\n    flat.push({\n      json: {\n        notionPageId,\n        kundePageId,\n        confBlogIDs\n      }\n    });\n  }\n}\n\nreturn flat;"
+        "jsCode": "const items = $input.all();\nconst flat = [];\n\nfor (const item of items) {\n  const notionPageId = item.json.id;\n  const props = item.json;\n\n  const confBlogIDs = props.property_confluence_blog_i_ds\n    || props.property_confluenceblogids\n    || props.property_confluence_blog_ids\n    || '';\n\n  const typ = props.property_typ || 'Individuell';\n\n  const dbKunden  = props.property_db_kunden  || [];\n  const kundenIds = Array.isArray(dbKunden)  ? dbKunden  : [dbKunden];\n\n  const dbGruppen  = props.property_db_gruppen || [];\n  const gruppenIds = Array.isArray(dbGruppen) ? dbGruppen : [dbGruppen];\n\n  if ((typ === 'Gruppe' || typ === 'Beides') && gruppenIds.filter(Boolean).length === 0) continue;\n  if ((typ === 'Individuell' || typ === 'Beides') && kundenIds.filter(Boolean).length === 0) continue;\n\n  if (typ === 'Individuell' || typ === 'Beides') {\n    for (const kundePageId of kundenIds) {\n      if (!kundePageId) continue;\n      flat.push({\n        json: {\n          notionPageId,\n          empfaengerPageId: kundePageId,\n          empfaengerTyp: 'individuell',\n          confBlogIDs\n        }\n      });\n    }\n  }\n\n  if (typ === 'Gruppe' || typ === 'Beides') {\n    for (const gruppePageId of gruppenIds) {\n      if (!gruppePageId) continue;\n      flat.push({\n        json: {\n          notionPageId,\n          empfaengerPageId: gruppePageId,\n          empfaengerTyp: 'gruppe',\n          confBlogIDs\n        }\n      });\n    }\n  }\n}\n\nreturn flat;"
       },
       "id": "078b5c66-174d-4a1a-90ad-651e91c47e25",
       "name": "Flatten: Eintraege x Kunden",
@@ -84,7 +84,7 @@
         "operation": "get",
         "pageId": {
           "__rl": true,
-          "value": "={{ $json.kundePageId }}",
+          "value": "={{ $json.empfaengerPageId }}",
           "mode": "id"
         }
       },
@@ -106,7 +106,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Space Key aus DB Kunden\nconst spaceKey = $json.property_confluence_space_key || '';\n\n// Daten aus dem Loop\nconst loopItem     = $('Loop: Ein Paar pro Durchlauf').item.json;\nconst notionPageId = loopItem.notionPageId || '';\nconst confBlogIDs  = loopItem.confBlogIDs  || '';\n\n// Blog-ID fuer diesen Space Key finden\n// Format: \"KPA:12345,KPB:67890\"\nconst entries = confBlogIDs\n  .split(',')\n  .map(e => e.trim())\n  .filter(e => e.includes(':'));\n\nconst found  = entries.find(e => e.startsWith(spaceKey + ':'));\nconst blogId = found ? found.split(':').slice(1).join(':') : '';\n\nreturn {\n  json: {\n    blogId,\n    spaceKey,\n    notionPageId,\n    confBlogIDs\n  }\n};"
+        "jsCode": "const spaceKey = $json.property_confluence_space_key || '';\n\nconst loopItem      = $('Loop: Ein Paar pro Durchlauf').item.json;\nconst notionPageId  = loopItem.notionPageId   || '';\nconst confBlogIDs   = loopItem.confBlogIDs    || '';\nconst empfaengerTyp = loopItem.empfaengerTyp  || '';\n\nconst entries = confBlogIDs\n  .split(',')\n  .map(e => e.trim())\n  .filter(e => e.includes(':'));\n\nconst found  = entries.find(e => e.startsWith(spaceKey + ':'));\nconst blogId = found ? found.split(':').slice(1).join(':') : '';\n\nreturn {\n  json: {\n    blogId,\n    spaceKey,\n    notionPageId,\n    confBlogIDs,\n    empfaengerTyp\n  }\n};"
       },
       "id": "9e7e4159-ea71-4f83-990a-1b27156341a7",
       "name": "Code: Blog-ID finden",
@@ -283,6 +283,65 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "empfaenger-typ-check",
+              "leftValue": "={{ $json.empfaengerTyp }}",
+              "rightValue": "gruppe",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+      "name": "IF: Empfaenger-Typ",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1504,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.empfaengerPageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-456789012345",
+      "name": "Notion: Gruppendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -1280,
+        272
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
         "resource": "databasePage",
         "operation": "update",
         "pageId": {
@@ -356,7 +415,36 @@
         [],
         [
           {
+            "node": "IF: Empfaenger-Typ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Empfaenger-Typ": {
+      "main": [
+        [
+          {
+            "node": "Notion: Gruppendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Gruppendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Blog-ID finden",
             "type": "main",
             "index": 0
           }
