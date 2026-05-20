@@ -4,14 +4,22 @@
     {
       "parameters": {
         "rule": {
-          "interval": [{"field": "minutes", "minutesInterval": 15}]
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
         }
       },
       "id": "a1b2c3d4-e001-4000-8000-000000000001",
       "name": "Alle 15 Minuten",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [160, 400]
+      "position": [
+        160,
+        400
+      ]
     },
     {
       "parameters": {
@@ -31,20 +39,29 @@
       "name": "Notion: Alle Termine holen",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
-      "position": [384, 400],
+      "position": [
+        384,
+        400
+      ],
       "credentials": {
-        "notionApi": {"id": "NnTc9kDS62fncKVA", "name": "Notion account"}
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
       }
     },
     {
       "parameters": {
-        "jsCode": "// Termine nach Kunden gruppieren – ein Output-Item pro Kunde mit allen seinen Terminen.\n// Nur Termine mit Datum >= heute werden beruecksichtigt.\nvar items = $input.all();\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\nvar kundeMap = {};\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start) { datumRaw = datumObj.start; }\n  else if (typeof datumObj === 'string' && datumObj.length >= 10) { datumRaw = datumObj; }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw.substring(0, 10));\n  if (terminDate < today) continue;\n\n  var titel = props.property_titel || props.name || 'Kein Titel';\n  var ort = props.property_ort || '';\n  var datumIso = datumRaw.substring(0, 10);\n  var dp = datumIso.split('-');\n  var datumStr = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  var kundenRaw = props.property_kunden || [];\n  var kundenIds = Array.isArray(kundenRaw) ? kundenRaw : [kundenRaw];\n\n  for (var j = 0; j < kundenIds.length; j++) {\n    var kundePageId = kundenIds[j];\n    if (!kundePageId) continue;\n    if (!kundeMap[kundePageId]) { kundeMap[kundePageId] = { kundePageId: kundePageId, termine: [] }; }\n    kundeMap[kundePageId].termine.push({ datumIso: datumIso, datumStr: datumStr, uhrzeitStr: uhrzeitStr, titel: titel, ort: ort });\n  }\n}\n\nvar result = [];\nvar kundeIds = Object.keys(kundeMap);\nfor (var ki = 0; ki < kundeIds.length; ki++) {\n  var entry = kundeMap[kundeIds[ki]];\n  entry.termine.sort(function(a, b) { return a.datumIso < b.datumIso ? -1 : a.datumIso > b.datumIso ? 1 : 0; });\n  result.push({ json: entry });\n}\nreturn result;"
+        "jsCode": "var items = $input.all();\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\nvar empfaengerMap = {};\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start)                              { datumRaw = datumObj.start; }\n  else if (typeof datumObj === 'string' && datumObj.length >= 10) { datumRaw = datumObj; }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw.substring(0, 10));\n  if (terminDate < today) continue;\n\n  var titel    = props.property_titel || props.name || 'Kein Titel';\n  var ort      = props.property_ort || '';\n  var datumIso = datumRaw.substring(0, 10);\n  var dp       = datumIso.split('-');\n  var datumStr = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  var termin = { datumIso: datumIso, datumStr: datumStr, uhrzeitStr: uhrzeitStr, titel: titel, ort: ort };\n\n  var typ = props.property_typ || 'Individuell';\n\n  var kundenRaw  = props.property_kunden  || [];\n  var gruppenRaw = props.property_gruppen || [];\n  var kundenIds  = Array.isArray(kundenRaw)  ? kundenRaw  : [kundenRaw];\n  var gruppenIds = Array.isArray(gruppenRaw) ? gruppenRaw : [gruppenRaw];\n\n  if ((typ === 'Gruppe' || typ === 'Beides') && gruppenIds.filter(Boolean).length === 0) {\n    empfaengerMap['__guard_error__' + i] = {\n      _guard_error: true,\n      _error_reason: 'Typ=\"' + typ + '\" aber property_gruppen ist leer',\n      titel: titel,\n      notionPageId: props.id || ''\n    };\n    continue;\n  }\n  if ((typ === 'Individuell' || typ === 'Beides') && kundenIds.filter(Boolean).length === 0) {\n    empfaengerMap['__guard_error__' + i] = {\n      _guard_error: true,\n      _error_reason: 'Typ=\"' + typ + '\" aber property_kunden ist leer',\n      titel: titel,\n      notionPageId: props.id || ''\n    };\n    continue;\n  }\n\n  if (typ === 'Individuell' || typ === 'Beides') {\n    for (var j = 0; j < kundenIds.length; j++) {\n      var kId = kundenIds[j];\n      if (!kId) continue;\n      if (!empfaengerMap[kId]) {\n        empfaengerMap[kId] = { empfaengerPageId: kId, empfaengerTyp: 'individuell', termine: [] };\n      }\n      empfaengerMap[kId].termine.push(termin);\n    }\n  }\n\n  if (typ === 'Gruppe' || typ === 'Beides') {\n    for (var k = 0; k < gruppenIds.length; k++) {\n      var gId = gruppenIds[k];\n      if (!gId) continue;\n      if (!empfaengerMap[gId]) {\n        empfaengerMap[gId] = { empfaengerPageId: gId, empfaengerTyp: 'gruppe', termine: [] };\n      }\n      empfaengerMap[gId].termine.push(termin);\n    }\n  }\n}\n\nvar result = [];\nvar keys = Object.keys(empfaengerMap);\nfor (var ki = 0; ki < keys.length; ki++) {\n  var entry = empfaengerMap[keys[ki]];\n  if (entry._guard_error) {\n    result.push({ json: entry });\n    continue;\n  }\n  entry.termine.sort(function(a, b) {\n    return a.datumIso < b.datumIso ? -1 : a.datumIso > b.datumIso ? 1 : 0;\n  });\n  result.push({ json: entry });\n}\nreturn result;"
       },
       "id": "a1b2c3d4-e003-4000-8000-000000000003",
       "name": "Code: Nach Kunden aufteilen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [608, 400]
+      "position": [
+        608,
+        400
+      ]
     },
     {
       "parameters": {
@@ -54,7 +71,10 @@
       "name": "Loop: Ein Kunde pro Durchlauf",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
-      "position": [832, 400]
+      "position": [
+        960,
+        400
+      ]
     },
     {
       "parameters": {
@@ -62,7 +82,7 @@
         "operation": "get",
         "pageId": {
           "__rl": true,
-          "value": "={{ $json.kundePageId }}",
+          "value": "={{ $json.empfaengerPageId }}",
           "mode": "id"
         }
       },
@@ -70,36 +90,30 @@
       "name": "Notion: Kundendaten holen",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
-      "position": [1056, 300],
+      "position": [
+        1280,
+        256
+      ],
       "credentials": {
-        "notionApi": {"id": "NnTc9kDS62fncKVA", "name": "Notion account"}
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
       }
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "m01",
-              "name": "confluencePageId",
-              "value": "={{ $json.property_confluence_page_i_d || $json.property_confluence_page_id || '' }}",
-              "type": "string"
-            },
-            {
-              "id": "m02",
-              "name": "spaceKey",
-              "value": "={{ $json.property_confluence_space_key || '' }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "mode": "runOnceForEachItem",
+        "jsCode": "var loopItem   = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar notionData = $json;\n\nvar confluencePageId = notionData.property_confluence_page_i_d\n  || notionData.property_confluence_page_id\n  || '';\nvar spaceKey = notionData.property_confluence_space_key || '';\n\nvar empfaengerTyp  = loopItem.empfaengerTyp;\nvar isGruppenSpace = spaceKey.startsWith('GP');\nvar isKundenSpace  = spaceKey.startsWith('KP');\n\nif (empfaengerTyp === 'gruppe' && !isGruppenSpace) {\n  throw new Error(\n    'GUARD VERLETZUNG: Typ=Gruppe aber SpaceKey=\"' + spaceKey + '\" ist kein GP*-Space. ' +\n    'Empfaenger-PageId: ' + loopItem.empfaengerPageId\n  );\n}\nif (empfaengerTyp === 'individuell' && !isKundenSpace) {\n  throw new Error(\n    'GUARD VERLETZUNG: Typ=Individuell aber SpaceKey=\"' + spaceKey + '\" ist kein KP*-Space. ' +\n    'Empfaenger-PageId: ' + loopItem.empfaengerPageId\n  );\n}\n\nreturn {\n  json: {\n    confluencePageId: confluencePageId,\n    spaceKey:         spaceKey,\n    empfaengerTyp:    empfaengerTyp,\n    termine:          loopItem.termine || []\n  }\n};"
       },
       "id": "a1b2c3d4-e006-4000-8000-000000000006",
       "name": "Set: Kundendaten",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [1280, 300]
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        400
+      ]
     },
     {
       "parameters": {
@@ -113,9 +127,15 @@
       "name": "Confluence: Seite holen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1504, 300],
+      "position": [
+        1728,
+        400
+      ],
       "credentials": {
-        "httpBasicAuth": {"id": "OncAUjZtrqWedJug", "name": "Unnamed credential 2"}
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
       }
     },
     {
@@ -127,7 +147,10 @@
       "name": "Code: Tabelle aufbauen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1728, 300]
+      "position": [
+        1952,
+        400
+      ]
     },
     {
       "parameters": {
@@ -138,7 +161,10 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {"name": "Content-Type", "value": "application/json"}
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -151,47 +177,285 @@
       "name": "Confluence: Seite aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1952, 300],
+      "position": [
+        2176,
+        400
+      ],
       "credentials": {
-        "httpBasicAuth": {"id": "OncAUjZtrqWedJug", "name": "Unnamed credential 2"}
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "var items = $input.all();\nvar errors = items.filter(function(i) { return i.json._guard_error === true; });\n\nif (errors.length > 0) {\n  var errorDetails = errors.map(function(e) {\n    return '\\u2022 \"' + e.json.titel + '\" (' + e.json.notionPageId + '): ' + e.json._error_reason;\n  }).join('\\n');\n\n  return errors.map(function(e) {\n    return {\n      json: {\n        _guard_triggered: true,\n        notionPageId: e.json.notionPageId,\n        titel: e.json.titel,\n        errorReason: e.json._error_reason,\n        errorSummary: errorDetails,\n        timestamp: new Date().toISOString()\n      }\n    };\n  });\n}\n\nreturn items.filter(function(i) { return !i.json._guard_error; });"
+      },
+      "id": "861ee97e-be07-4bd1-98f2-d3f6bc5037ad",
+      "name": "Guard: Konsistenz-Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cd70b203-e22d-405c-9041-a6b9c4d6ebcc",
+              "leftValue": "={{ $json._guard_triggered }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "84b8dc5b-f401-4785-a989-62353572a80d",
+      "name": "IF: Guard-Fehler",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8b380134-38d9-4ca8-89c7-4477672fdf16",
+              "leftValue": "={{ $json.empfaengerTyp }}",
+              "rightValue": "gruppe",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c04f3743-09bd-4a7a-bd40-d1471e8fb34b",
+      "name": "IF: Empfaenger-Typ",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1088,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.empfaengerPageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "757e292a-e382-47cb-8087-df603c6b7e61",
+      "name": "Notion: Gruppendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        544
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
       }
     }
   ],
   "pinData": {},
   "connections": {
     "Alle 15 Minuten": {
-      "main": [[{"node": "Notion: Alle Termine holen", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Notion: Alle Termine holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Notion: Alle Termine holen": {
-      "main": [[{"node": "Code: Nach Kunden aufteilen", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Code: Nach Kunden aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Code: Nach Kunden aufteilen": {
-      "main": [[{"node": "Loop: Ein Kunde pro Durchlauf", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Guard: Konsistenz-Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Loop: Ein Kunde pro Durchlauf": {
       "main": [
         [],
-        [{"node": "Notion: Kundendaten holen", "type": "main", "index": 0}]
+        [
+          {
+            "node": "IF: Empfaenger-Typ",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Notion: Kundendaten holen": {
-      "main": [[{"node": "Set: Kundendaten", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Set: Kundendaten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Set: Kundendaten": {
-      "main": [[{"node": "Confluence: Seite holen", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Confluence: Seite holen": {
-      "main": [[{"node": "Code: Tabelle aufbauen", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Code: Tabelle aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Code: Tabelle aufbauen": {
-      "main": [[{"node": "Confluence: Seite aktualisieren", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Confluence: Seite aktualisieren": {
-      "main": [[{"node": "Loop: Ein Kunde pro Durchlauf", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: Konsistenz-Check": {
+      "main": [
+        [
+          {
+            "node": "IF: Guard-Fehler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Guard-Fehler": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Empfaenger-Typ": {
+      "main": [
+        [
+          {
+            "node": "Notion: Gruppendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Gruppendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Set: Kundendaten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
-  "settings": {"executionOrder": "v1", "binaryMode": "separate"},
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
   "versionId": "c4d5e6f7-a8b9-4000-9000-000000000006",
   "meta": {
     "templateCredsSetupCompleted": true,
