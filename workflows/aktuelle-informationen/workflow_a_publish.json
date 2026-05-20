@@ -54,7 +54,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// n8n Notion v2.2 gibt Properties als property_feldname aus\nconst items = $input.all();\nconst flat = [];\n\nfor (const item of items) {\n  const notionPageId = item.json.id;\n  const props = item.json;\n\n  // Titel\n  const titel = props.property_titel || props.name || 'Kein Titel';\n\n  // Kurztext\n  const kurztext = props.property_kurztext || '';\n\n  // Kategorie (Multi-Select → Array oder String)\n  const katRaw = props.property_kategorie;\n  const kategorie = Array.isArray(katRaw)\n    ? katRaw.join(', ')\n    : (katRaw || '');\n\n  // Datum aus 'Veroeffentlicht am' (n8n normalisiert Umlaute)\n  // Moegliche Feldnamen: property_ver_ffentlicht_am / property_veroffentlicht_am\n  const verAm = props.property_ver_ffentlicht_am\n    || props.property_veroffentlicht_am\n    || props.property_veroeffentlicht_am;\n  const datum = verAm?.start || new Date().toISOString().split('T')[0];\n\n  // DB Kunden Relation (Array von Notion Page IDs)\n  const dbKunden = props.property_db_kunden || [];\n  const kundenIds = Array.isArray(dbKunden) ? dbKunden : [dbKunden];\n\n  // Bestehende Blog-IDs (fuer spaetere Aktualisierung)\n  const currentBlogIDs = props.property_confluence_blog_i_ds\n    || props.property_confluenceblogids\n    || props.property_confluence_blog_ids\n    || '';\n\n  if (kundenIds.length === 0) continue;\n\n  for (const kundePageId of kundenIds) {\n    if (!kundePageId) continue;\n    flat.push({\n      json: {\n        notionPageId,\n        titel,\n        kurztext,\n        kategorie,\n        datum,\n        kundePageId,\n        currentBlogIDs\n      }\n    });\n  }\n}\n\nreturn flat;"
+        "jsCode": "const items = $input.all();\nconst flat = [];\n\nfor (const item of items) {\n  const notionPageId = item.json.id;\n  const props = item.json;\n\n  const titel     = props.property_titel || props.name || 'Kein Titel';\n  const kurztext  = props.property_kurztext || '';\n  const katRaw    = props.property_kategorie;\n  const kategorie = Array.isArray(katRaw) ? katRaw.join(', ') : (katRaw || '');\n  const verAm     = props.property_ver_ffentlicht_am\n    || props.property_veroffentlicht_am\n    || props.property_veroeffentlicht_am;\n  const datum          = verAm?.start || new Date().toISOString().split('T')[0];\n  const currentBlogIDs = props.property_confluence_blog_i_ds\n    || props.property_confluenceblogids\n    || props.property_confluence_blog_ids\n    || '';\n\n  const typ = props.property_typ || 'Individuell';\n\n  const dbKunden   = props.property_db_kunden || [];\n  const kundenIds  = Array.isArray(dbKunden) ? dbKunden : [dbKunden];\n\n  const dbGruppen  = props.property_db_gruppen || [];\n  const gruppenIds = Array.isArray(dbGruppen) ? dbGruppen : [dbGruppen];\n\n  if ((typ === 'Gruppe' || typ === 'Beides') && gruppenIds.filter(Boolean).length === 0) {\n    flat.push({\n      json: {\n        _guard_error: true,\n        _error_reason: `Typ=\"${typ}\" aber DB_Gruppen ist leer`,\n        notionPageId,\n        titel\n      }\n    });\n    continue;\n  }\n  if ((typ === 'Individuell' || typ === 'Beides') && kundenIds.filter(Boolean).length === 0) {\n    flat.push({\n      json: {\n        _guard_error: true,\n        _error_reason: `Typ=\"${typ}\" aber DB_Kunden ist leer`,\n        notionPageId,\n        titel\n      }\n    });\n    continue;\n  }\n\n  if (typ === 'Individuell' || typ === 'Beides') {\n    for (const kundePageId of kundenIds) {\n      if (!kundePageId) continue;\n      flat.push({\n        json: {\n          notionPageId,\n          titel,\n          kurztext,\n          kategorie,\n          datum,\n          currentBlogIDs,\n          empfaengerPageId: kundePageId,\n          empfaengerTyp: 'individuell',\n          _guard_error: false\n        }\n      });\n    }\n  }\n\n  if (typ === 'Gruppe' || typ === 'Beides') {\n    for (const gruppePageId of gruppenIds) {\n      if (!gruppePageId) continue;\n      flat.push({\n        json: {\n          notionPageId,\n          titel,\n          kurztext,\n          kategorie,\n          datum,\n          currentBlogIDs,\n          empfaengerPageId: gruppePageId,\n          empfaengerTyp: 'gruppe',\n          _guard_error: false\n        }\n      });\n    }\n  }\n}\n\nreturn flat;"
       },
       "id": "6b4d5e02-d127-4e87-977b-df940af5bab8",
       "name": "Flatten: Eintraege x Kunden",
@@ -84,7 +84,7 @@
         "operation": "get",
         "pageId": {
           "__rl": true,
-          "value": "={{ $json.kundePageId }}",
+          "value": "={{ $json.empfaengerPageId }}",
           "mode": "id"
         }
       },
@@ -93,8 +93,8 @@
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        1248,
-        304
+        1392,
+        256
       ],
       "credentials": {
         "notionApi": {
@@ -105,61 +105,16 @@
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "s1",
-              "name": "spaceKey",
-              "value": "={{ $json.property_confluence_space_key || '' }}",
-              "type": "string"
-            },
-            {
-              "id": "s2",
-              "name": "notionPageId",
-              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.notionPageId }}",
-              "type": "string"
-            },
-            {
-              "id": "s3",
-              "name": "titel",
-              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.titel }}",
-              "type": "string"
-            },
-            {
-              "id": "s4",
-              "name": "kurztext",
-              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.kurztext }}",
-              "type": "string"
-            },
-            {
-              "id": "s5",
-              "name": "kategorie",
-              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.kategorie }}",
-              "type": "string"
-            },
-            {
-              "id": "s6",
-              "name": "datum",
-              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.datum }}",
-              "type": "string"
-            },
-            {
-              "id": "s7",
-              "name": "currentBlogIDs",
-              "value": "={{ $('Loop: Ein Paar pro Durchlauf').item.json.currentBlogIDs }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
+        "mode": "runOnceForEachItem",
+        "jsCode": "const loopItem  = $('Loop: Ein Paar pro Durchlauf').item.json;\nconst notionData = $json;\n\nconst spaceKey = notionData.property_confluence_space_key || '';\n\nconst empfaengerTyp  = loopItem.empfaengerTyp;\nconst isGruppenSpace = spaceKey.startsWith('GP');\nconst isKundenSpace  = spaceKey.startsWith('KP');\n\nif (empfaengerTyp === 'gruppe' && !isGruppenSpace) {\n  throw new Error(\n    `GUARD VERLETZUNG: Typ=Gruppe aber SpaceKey=\"${spaceKey}\" ist kein GP*-Space.` +\n    ` Notion-Seite: ${loopItem.notionPageId}`\n  );\n}\nif (empfaengerTyp === 'individuell' && !isKundenSpace) {\n  throw new Error(\n    `GUARD VERLETZUNG: Typ=Individuell aber SpaceKey=\"${spaceKey}\" ist kein KP*-Space.` +\n    ` Notion-Seite: ${loopItem.notionPageId}`\n  );\n}\n\nreturn {\n  json: {\n    spaceKey,\n    empfaengerTyp,\n    notionPageId:   loopItem.notionPageId,\n    titel:          loopItem.titel,\n    kurztext:       loopItem.kurztext,\n    kategorie:      loopItem.kategorie,\n    datum:          loopItem.datum,\n    currentBlogIDs: loopItem.currentBlogIDs\n  }\n};"
       },
       "id": "6cc889dc-b487-4376-82d7-1e5e8f18fc05",
       "name": "Daten zusammenfuehren",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        1472,
-        304
+        1616,
+        384
       ]
     },
     {
@@ -188,8 +143,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1696,
-        304
+        1840,
+        384
       ],
       "credentials": {
         "httpBasicAuth": {
@@ -208,8 +163,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1920,
-        304
+        2064,
+        384
       ]
     },
     {
@@ -245,8 +200,8 @@
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        2128,
-        304
+        2288,
+        384
       ],
       "credentials": {
         "notionApi": {
@@ -283,11 +238,84 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
       "position": [
-        800,
+        880,
         384
       ],
       "id": "bb1a4e1d-7335-4679-b96f-23eb12709e53",
       "name": "If"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\n\nconst errors = items.filter(i => i.json._guard_error === true);\n\nif (errors.length > 0) {\n  const errorDetails = errors.map(e =>\n    `• \"${e.json.titel}\" (${e.json.notionPageId}): ${e.json._error_reason}`\n  ).join('\\n');\n\n  return errors.map(e => ({\n    json: {\n      _guard_triggered: true,\n      notionPageId: e.json.notionPageId,\n      titel: e.json.titel,\n      errorReason: e.json._error_reason,\n      errorSummary: errorDetails,\n      timestamp: new Date().toISOString()\n    }\n  }));\n}\n\nreturn items.filter(i => !i.json._guard_error);"
+      },
+      "id": "8d369251-60a9-4d77-bf8e-399aef40be88",
+      "name": "Guard: Fehlerhafte Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d329e8d0-1dd4-4e2f-8085-5ac3f0ab7ecd",
+              "leftValue": "={{ $json.empfaengerTyp }}",
+              "rightValue": "gruppe",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e010bc50-e335-4b27-97c3-75cfaeb4426b",
+      "name": "If: Empfaenger-Typ",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1168,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.empfaengerPageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "0b2f86b9-f289-4e09-9677-9c2c64cdf4ce",
+      "name": "Notion: Gruppendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1392,
+        512
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -318,7 +346,7 @@
       "main": [
         [
           {
-            "node": "If",
+            "node": "Guard: Fehlerhafte Items",
             "type": "main",
             "index": 0
           }
@@ -330,7 +358,7 @@
         [],
         [
           {
-            "node": "Notion: Kundendaten holen",
+            "node": "If: Empfaenger-Typ",
             "type": "main",
             "index": 0
           }
@@ -397,6 +425,46 @@
         [
           {
             "node": "Loop: Ein Paar pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: Fehlerhafte Items": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Empfaenger-Typ": {
+      "main": [
+        [
+          {
+            "node": "Notion: Gruppendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Gruppendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Daten zusammenfuehren",
             "type": "main",
             "index": 0
           }
