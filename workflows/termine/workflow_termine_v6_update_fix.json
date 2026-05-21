@@ -1,0 +1,394 @@
+{
+  "name": "Termine → Confluence Panel [v6]",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "f9fc97f1-d887-4310-8c38-67dc1b99913a",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        1584,
+        2592
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "36347c76-2802-80e0-b5c1-cb867c9cc3ce",
+          "mode": "list",
+          "cachedResultName": "DB Termine",
+          "cachedResultUrl": "https://www.notion.so/36347c76280280e0b5c1cb867c9cc3ce"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "1d2606cd-74b4-40ee-92a9-b99984b53f70",
+      "name": "Notion: Alle Termine holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1808,
+        2592
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// Code: Nach Kunden aufteilen (v3)\n// NEU: ConfluenceSync-Filter + Hash-Check für Änderungserkennung\n//\n// Felder in DB Termine (neu benötigt):\n//   ConfluenceSync  | Checkbox   | true = bereits übertragen\n//   LastSyncHash    | Rich Text  | hash(datum+titel) vom letzten Sync\n//\n// Logik:\n//   ConfluenceSync=false → immer übertragen (neuer Termin)\n//   ConfluenceSync=true  → nur wenn hash(datum+titel) != LastSyncHash\n// ============================================================\n\nvar items = $input.all();\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\n// Einfache Hash-Funktion (djb2) – kein crypto nötig\nfunction simpleHash(str) {\n  var hash = 5381;\n  for (var i = 0; i < str.length; i++) {\n    hash = ((hash << 5) + hash) + str.charCodeAt(i);\n    hash = hash & hash; // 32bit int\n  }\n  return String(Math.abs(hash));\n}\n\nvar kundeMap = {};\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n  var notionPageId = items[i].json.id || '';\n\n  // --- Datum prüfen ---\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start) { datumRaw = datumObj.start; }\n  else if (typeof datumObj === 'string' && datumObj.length >= 10) { datumRaw = datumObj; }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw.substring(0, 10));\n  if (terminDate < today) continue;\n\n  // --- Termin-Felder ---\n  var titel      = props.property_titel || props.name || 'Kein Titel';\n  var ort        = props.property_ort || '';\n  var datumIso   = datumRaw.substring(0, 10);\n  var dp         = datumIso.split('-');\n  var datumStr   = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  // --- NEU: ConfluenceSync + LastSyncHash ---\n  var confluenceSync = props.property_confluence_sync\n    || props.property_confluencesync\n    || false;\n\n  var lastSyncHash = props.property_last_sync_hash\n    || props.property_lastsynchash\n    || props.property_last_sync_hash\n    || '';\n\n  // Hash aus aktuellem Datum + Titel berechnen\n  var currentHash = simpleHash(datumIso + '|' + titel);\n\n  // Filter-Logik:\n  // ConfluenceSync=false → neu, immer übertragen\n  // ConfluenceSync=true  → nur wenn Hash geändert\n  var needsSync = false;\n  if (!confluenceSync) {\n    needsSync = true; // Neuer Termin\n  } else if (currentHash !== String(lastSyncHash).trim()) {\n    needsSync = true; // Datum oder Titel geändert\n  }\n\n  if (!needsSync) continue; // Überspringen – keine Änderung\n\n  // --- Kunden-Relation ---\n  var kundenRaw = props.property_kunden || [];\n  var kundenIds = Array.isArray(kundenRaw) ? kundenRaw : [kundenRaw];\n\n  for (var j = 0; j < kundenIds.length; j++) {\n    var kundePageId = kundenIds[j];\n    if (!kundePageId) continue;\n    if (!kundeMap[kundePageId]) {\n      kundeMap[kundePageId] = { kundePageId: kundePageId, termine: [] };\n    }\n    kundeMap[kundePageId].termine.push({\n      datumIso:    datumIso,\n      datumStr:    datumStr,\n      uhrzeitStr:  uhrzeitStr,\n      titel:       titel,\n      ort:         ort,\n      notionPageId: notionPageId,  // für Notion-Update nach Sync\n      currentHash:  currentHash    // für Notion-Update nach Sync\n    });\n  }\n}\n\nvar result = [];\nvar kundeIds = Object.keys(kundeMap);\nfor (var ki = 0; ki < kundeIds.length; ki++) {\n  var entry = kundeMap[kundeIds[ki]];\n  entry.termine.sort(function(a, b) {\n    return a.datumIso < b.datumIso ? -1 : a.datumIso > b.datumIso ? 1 : 0;\n  });\n  result.push({ json: entry });\n}\nreturn result;\n"
+      },
+      "id": "7ec4ede8-ea08-4c64-9b71-1316c92a436a",
+      "name": "Code: Nach Kunden aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        2592
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "82273178-66cb-4e0d-8ce8-68800af10163",
+      "name": "Loop: Ein Kunde pro Durchlauf",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2256,
+        2592
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.kundePageId }}",
+          "mode": "id"
+        }
+      },
+      "id": "07c51c36-8cd2-4c79-95f8-e457e95f26ee",
+      "name": "Notion: Kundendaten holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        2480,
+        2480
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m01",
+              "name": "confluencePageId",
+              "value": "={{ $json.property_confluence_page_i_d || $json.property_confluence_page_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "m02",
+              "name": "spaceKey",
+              "value": "={{ $json.property_confluence_space_key || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d0c258b6-4593-4022-aa56-6752681119f7",
+      "name": "Set: Kundendaten",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2704,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.confluencePageId }}?expand=body.storage,version,title",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "43e011f7-e975-412d-a42d-97ddf60b411d",
+      "name": "Confluence: Seite holen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2928,
+        2480
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// ============================================================\n// Code: Tabelle aufbauen (v6)\n// Fix: Geänderte Termine korrekt ersetzen\n//\n// Mechanismus:\n//   - notionPageId wird als data-notion-id=\"...\" auf <tr> gespeichert\n//   - Beim Parsen: bestehende Zeilen nach notionPageId indiziert\n//   - Neue/geänderte Termine ersetzen die alte Zeile (gleiche notionPageId)\n//   - Vergangene Termine (< heute) werden entfernt\n//   - Neue Termine (noch nicht in Tabelle) werden angehängt\n//   - Sortierung nach Datum\n//   - Confluence Cloud-Format: data-table-width, ac:local-id, <p>-Tags\n// ============================================================\n\nvar page        = $json;\nvar loopItem    = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar neueTermine = loopItem.termine || [];\n\nvar esc = function(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n};\nvar unesc = function(s) {\n  return String(s || '')\n    .replace(/&amp;/g,  '&')\n    .replace(/&lt;/g,   '<')\n    .replace(/&gt;/g,   '>')\n    .replace(/&quot;/g, '\"')\n    .replace(/<[^>]+>/g, ''); // alle Tags entfernen beim Parsen\n};\n\nvar pageId       = page.id    || '';\nvar pageTitle    = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\n// ---------------------------------------------------------------\n// Schritt 1: \"Nächste Termine\"-Panel finden\n// ---------------------------------------------------------------\nvar panelTitles = [\n  'N\\u00e4chste Termine', 'N&auml;chste Termine',\n  'N&#228;chste Termine', 'N&#xE4;chste Termine', 'N&#xe4;chste Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\nif (titleIdx === -1) {\n  throw new Error('Heading \"Nächste Termine\" nicht gefunden. pageId:' + pageId);\n}\n\nvar panelMacroTag = '<ac:structured-macro ac:name=\"panel\"';\nvar panelStart    = html.indexOf(panelMacroTag, titleIdx);\nif (panelStart === -1) {\n  throw new Error('Panel-Makro nach \"Nächste Termine\" nicht gefunden. pageId:' + pageId);\n}\nvar panelEndTag   = '</ac:structured-macro>';\nvar panelEnd      = html.indexOf(panelEndTag, panelStart);\nif (panelEnd === -1) {\n  throw new Error('Panel-Ende nicht gefunden. pageId:' + pageId);\n}\nvar panelEnd_full = panelEnd + panelEndTag.length;\nvar panelBlock    = html.substring(panelStart, panelEnd_full);\n\n// ---------------------------------------------------------------\n// Schritt 2: Bestehende Zeilen parsen\n// Map: notionPageId → Termin-Objekt (für Ersetzung)\n// Zeilen ohne notionPageId: nach datumIso|titel indiziert (Altbestand)\n// ---------------------------------------------------------------\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\nfunction deToIso(datumStr) {\n  var parts = String(datumStr || '').trim().split('.');\n  if (parts.length !== 3) return '';\n  return parts[2] + '-' + parts[1] + '-' + parts[0];\n}\nfunction isoToDate(iso) {\n  var d = new Date(iso);\n  d.setHours(0, 0, 0, 0);\n  return d;\n}\n\n// Map: notionPageId → Termin (für Ersetzung durch geänderte Termine)\nvar byNotionId = {};\n// Map: datumIso|titel → Termin (Altbestand ohne notionPageId)\nvar byKey      = {};\n\nvar trPattern = /<tr[^>]*>([\\s\\S]*?)<\\/tr>/g;\nvar trFullPattern = /<tr([^>]*)>([\\s\\S]*?)<\\/tr>/g;\nvar trMatch;\n\n// Reset regex\ntrFullPattern.lastIndex = 0;\nwhile ((trMatch = trFullPattern.exec(panelBlock)) !== null) {\n  var trAttrs  = trMatch[1]; // Attribute des <tr>-Tags\n  var rowHtml  = trMatch[2];\n\n  if (rowHtml.indexOf('<th') !== -1) continue; // Header überspringen\n\n  // notionPageId aus data-notion-id Attribut lesen\n  var notionIdMatch = trAttrs.match(/data-notion-id=\"([^\"]+)\"/);\n  var notionPageId  = notionIdMatch ? notionIdMatch[1] : '';\n\n  // Zellinhalte extrahieren\n  var tdValues = [];\n  var tdPattern = /<td[^>]*>([\\s\\S]*?)<\\/td>/g;\n  var tdMatch;\n  while ((tdMatch = tdPattern.exec(rowHtml)) !== null) {\n    tdValues.push(unesc(tdMatch[1].trim()));\n  }\n  if (tdValues.length < 4) continue;\n\n  var datumStr   = tdValues[0];\n  var uhrzeitStr = tdValues[1];\n  var titel      = tdValues[2];\n  var ort        = tdValues[3];\n  var datumIso   = deToIso(datumStr);\n\n  // Vergangene Termine entfernen\n  if (datumIso && isoToDate(datumIso) < today) continue;\n\n  var terminObj = { datumIso, datumStr, uhrzeitStr, titel, ort, notionPageId };\n\n  if (notionPageId) {\n    byNotionId[notionPageId] = terminObj;\n  } else {\n    byKey[datumIso + '|' + titel] = terminObj;\n  }\n}\n\n// ---------------------------------------------------------------\n// Schritt 3: Neue/geänderte Termine einpflegen\n// - Hat notionPageId bereits einen Eintrag → ersetzen (Änderung)\n// - Sonst: prüfen ob datumIso|titel schon existiert → überspringen\n// - Sonst: neu anhängen\n// ---------------------------------------------------------------\nfor (var ni = 0; ni < neueTermine.length; ni++) {\n  var nt = neueTermine[ni];\n  if (!nt.datumIso) continue;\n  if (isoToDate(nt.datumIso) < today) continue;\n\n  var newObj = {\n    datumIso:    nt.datumIso,\n    datumStr:    nt.datumStr,\n    uhrzeitStr:  nt.uhrzeitStr,\n    titel:       nt.titel,\n    ort:         nt.ort,\n    notionPageId: nt.notionPageId || ''\n  };\n\n  if (nt.notionPageId && byNotionId[nt.notionPageId]) {\n    // Geänderter Termin → bestehende Zeile ersetzen\n    byNotionId[nt.notionPageId] = newObj;\n  } else if (!nt.notionPageId && byKey[nt.datumIso + '|' + nt.titel]) {\n    // Altbestand-Duplikat → überspringen\n  } else if (nt.notionPageId) {\n    // Neuer Termin mit notionPageId → in byNotionId eintragen\n    byNotionId[nt.notionPageId] = newObj;\n  } else {\n    // Neuer Termin ohne notionPageId → in byKey eintragen\n    byKey[nt.datumIso + '|' + nt.titel] = newObj;\n  }\n}\n\n// ---------------------------------------------------------------\n// Schritt 4: Alle Termine zusammenführen und sortieren\n// ---------------------------------------------------------------\nvar alleTermine = [];\nvar keys1 = Object.keys(byNotionId);\nfor (var k1 = 0; k1 < keys1.length; k1++) {\n  alleTermine.push(byNotionId[keys1[k1]]);\n}\nvar keys2 = Object.keys(byKey);\nfor (var k2 = 0; k2 < keys2.length; k2++) {\n  alleTermine.push(byKey[keys2[k2]]);\n}\nalleTermine.sort(function(a, b) {\n  return a.datumIso < b.datumIso ? -1 : a.datumIso > b.datumIso ? 1 : 0;\n});\n\n// ---------------------------------------------------------------\n// Schritt 5: Confluence Cloud-kompatible Tabelle aufbauen\n// ---------------------------------------------------------------\nvar tableLocalId = 'termine-tbl-' + pageId + '-0001';\n\nvar headerRow = '<tr>'\n  + '<th ac:local-id=\"' + tableLocalId + '-h1\"><p><strong>Datum</strong></p></th>'\n  + '<th ac:local-id=\"' + tableLocalId + '-h2\"><p><strong>Uhrzeit</strong></p></th>'\n  + '<th ac:local-id=\"' + tableLocalId + '-h3\"><p><strong>Titel</strong></p></th>'\n  + '<th ac:local-id=\"' + tableLocalId + '-h4\"><p><strong>Ort</strong></p></th>'\n  + '</tr>';\n\nvar dataRows = '';\nfor (var ri = 0; ri < alleTermine.length; ri++) {\n  var t     = alleTermine[ri];\n  var rowId = tableLocalId + '-r' + ri;\n  // notionPageId als data-Attribut auf <tr> speichern\n  var notionAttr = t.notionPageId\n    ? ' data-notion-id=\"' + esc(t.notionPageId) + '\"'\n    : '';\n  dataRows += '<tr ac:local-id=\"' + rowId + '\"' + notionAttr + '>'\n    + '<td ac:local-id=\"' + rowId + '-c1\"><p>' + esc(t.datumStr)   + '</p></td>'\n    + '<td ac:local-id=\"' + rowId + '-c2\"><p>' + esc(t.uhrzeitStr) + '</p></td>'\n    + '<td ac:local-id=\"' + rowId + '-c3\"><p>' + esc(t.titel)      + '</p></td>'\n    + '<td ac:local-id=\"' + rowId + '-c4\"><p>' + esc(t.ort)        + '</p></td>'\n    + '</tr>';\n}\n\nvar tableHtml = alleTermine.length > 0\n  ? '<table data-table-width=\"760\" data-layout=\"default\" ac:local-id=\"' + tableLocalId + '\">'\n    + '<tbody>' + headerRow + dataRows + '</tbody>'\n    + '</table>'\n  : '<p></p>';\n\nvar newRichTextBody = '<ac:rich-text-body>' + tableHtml + '</ac:rich-text-body>';\n\n// ---------------------------------------------------------------\n// Schritt 6: Panel-Block ersetzen (self-closing oder befüllt)\n// ---------------------------------------------------------------\nvar selfClosing  = '<ac:rich-text-body />';\nvar newPanelBlock;\n\nif (panelBlock.indexOf(selfClosing) !== -1) {\n  newPanelBlock = panelBlock.replace(selfClosing, newRichTextBody);\n} else {\n  var rtbOpen  = '<ac:rich-text-body>';\n  var rtbClose = '</ac:rich-text-body>';\n  var rtbStart = panelBlock.indexOf(rtbOpen);\n  var rtbEnd   = panelBlock.indexOf(rtbClose);\n  if (rtbStart === -1 || rtbEnd === -1) {\n    throw new Error('ac:rich-text-body nicht gefunden. pageId:' + pageId\n      + ' Panel:' + panelBlock.substring(0, 300));\n  }\n  newPanelBlock = panelBlock.substring(0, rtbStart)\n    + newRichTextBody\n    + panelBlock.substring(rtbEnd + rtbClose.length);\n}\n\nhtml = html.substring(0, panelStart) + newPanelBlock + html.substring(panelEnd_full);\n\nreturn {\n  json: {\n    pageId:      pageId,\n    pageTitle:   pageTitle,\n    newVersion:  currentVersion + 1,\n    updatedHtml: html\n  }\n};\n"
+      },
+      "id": "b8fe09ba-c1a4-48db-9de1-ab6a752b3ae6",
+      "name": "Code: Tabelle aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.pageId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ version: { number: $json.newVersion }, title: $json.pageTitle, type: 'page', body: { storage: { value: $json.updatedHtml, representation: 'storage' } } }) }}",
+        "options": {}
+      },
+      "id": "d639e538-2206-4bf6-9dc8-a9e9ff925e5c",
+      "name": "Confluence: Seite aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3376,
+        2480
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ============================================================\n// Code: Sync-Items aufbereiten (FIXED)\n// Mode: runOnceForAllItems  ← wichtig, nicht runOnceForEachItem\n// Gibt pro Termin ein separates Item aus für Notion-Update\n// ============================================================\n\nvar loopItem = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar termine  = loopItem.termine || [];\n\nvar result = [];\nfor (var i = 0; i < termine.length; i++) {\n  var t = termine[i];\n  if (!t.notionPageId) continue;\n  result.push({\n    json: {\n      notionPageId: t.notionPageId,\n      currentHash:  t.currentHash\n    }\n  });\n}\n\n// Sicherheit: mindestens ein leeres Item damit der Loop nicht bricht\nif (result.length === 0) {\n  result.push({ json: { notionPageId: '', currentHash: '' } });\n}\n\nreturn result;\n"
+      },
+      "id": "sync-prep-001",
+      "name": "Code: Sync-Items aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.notionPageId }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "ConfluenceSync|checkbox",
+              "checkboxValue": true
+            },
+            {
+              "key": "LastSyncHash|rich_text",
+              "textContent": "={{ $json.currentHash }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notion-sync-001",
+      "name": "Notion: ConfluenceSync setzen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        3824,
+        2480
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Alle Termine holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Alle Termine holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Nach Kunden aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Nach Kunden aufteilen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Ein Kunde pro Durchlauf": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Notion: Kundendaten holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Kundendaten holen": {
+      "main": [
+        [
+          {
+            "node": "Set: Kundendaten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: Kundendaten": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Tabelle aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Tabelle aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Code: Sync-Items aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Sync-Items aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Notion: ConfluenceSync setzen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: ConfluenceSync setzen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "4a7336a7-b821-4289-85c4-7593a92b769d",
+  "meta": {
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "WR1TnrIbrAAEEubE",
+  "tags": []
+}
