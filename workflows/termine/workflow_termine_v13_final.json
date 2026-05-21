@@ -1,0 +1,367 @@
+{
+  "name": "Termine → Confluence Panel [v13]",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "trigger-v12",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f847c76-2802-80d2-9337-ed2a1f1b7256",
+          "mode": "id",
+          "cachedResultName": "DB Kunden",
+          "cachedResultUrl": "https://www.notion.so/2f847c76280280d29337ed2a1f1b7256"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "{\"property\": \"Confluence PageID\", \"rich_text\": {\"is_not_empty\": true}}",
+        "options": {}
+      },
+      "id": "notion-kunden-v12",
+      "name": "Notion: Alle Kunden holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        384,
+        280
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "36347c76-2802-80e0-b5c1-cb867c9cc3ce",
+          "mode": "list",
+          "cachedResultName": "DB Termine",
+          "cachedResultUrl": "https://www.notion.so/36347c76280280e0b5c1cb867c9cc3ce"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "{\"property\": \"Loeschen\", \"checkbox\": {\"equals\": false}}",
+        "options": {}
+      },
+      "id": "notion-termine-v12",
+      "name": "Notion: Aktive Termine holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        384,
+        520
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Code: Kunden + Termine zusammenführen (v13)\n// Empfängt Items von TWO Merge-Inputs:\n//   $input.all() enthält alle Items beider Branches\n//   Unterscheidung per _typ Feld das im vorherigen Set-Node gesetzt wird\n\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\nvar kundeMap = {};\nvar alleItems = $input.all();\n\n// Erst alle Kunden-Items verarbeiten\nfor (var k = 0; k < alleItems.length; k++) {\n  var item = alleItems[k].json;\n  if (item._typ !== 'kunde') continue;\n\n  var pageId     = item._pageId || '';\n  var confPageId = item._confluencePageId || '';\n  if (!confPageId) continue;\n\n  kundeMap[pageId] = {\n    kundePageId:      pageId,\n    confluencePageId: confPageId,\n    spaceKey:         item._spaceKey || '',\n    termine:          []\n  };\n}\n\n// Dann alle Termin-Items zuordnen\nfor (var t = 0; t < alleItems.length; t++) {\n  var item = alleItems[t].json;\n  if (item._typ !== 'termin') continue;\n\n  var datumIso   = item._datumIso   || '';\n  var datumStr   = item._datumStr   || '';\n  var uhrzeitStr = item._uhrzeitStr || '';\n  var titel      = item._titel      || '';\n  var ort        = item._ort        || '';\n  var kundenIds  = item._kundenIds  || [];\n\n  if (!datumIso) continue;\n  if (new Date(datumIso) < today) continue;\n\n  for (var j = 0; j < kundenIds.length; j++) {\n    var kId = kundenIds[j];\n    if (!kId || !kundeMap[kId]) continue;\n    kundeMap[kId].termine.push({ datumIso, datumStr, uhrzeitStr, titel, ort });\n  }\n}\n\n// Ergebnis: alle Kunden mit Confluence-Seite\nvar result = [];\nvar keys = Object.keys(kundeMap);\nfor (var ki = 0; ki < keys.length; ki++) {\n  var e = kundeMap[keys[ki]];\n  e.termine.sort(function(a,b){ return a.datumIso<b.datumIso?-1:a.datumIso>b.datumIso?1:0; });\n  result.push({ json: e });\n}\nreturn result;\n"
+      },
+      "id": "code-merge-v12",
+      "name": "Code: Kunden + Termine zusammenführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1056,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop-v12",
+      "name": "Loop: Ein Kunde pro Durchlauf",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1280,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.confluencePageId }}?expand=body.storage,version,title",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "confluence-get-v12",
+      "name": "Confluence: Seite holen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1504,
+        300
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\n// Code: Tabelle aufbauen (v12 - Full Replace)\n// Liest confluencePageId direkt aus loopItem (nicht aus Notion-Kundendaten)\n// da wir diese bereits im Merge-Node haben\n\nvar page     = $json;\nvar loopItem = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar termine  = loopItem.termine || [];\n\nvar esc = function(s) {\n  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n};\n\nvar pageId       = page.id    || '';\nvar pageTitle    = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value) ? page.body.storage.value : '';\n\n// Panel finden\nvar panelTitles = [\n  'N\\u00e4chste Termine','N&auml;chste Termine',\n  'N&#228;chste Termine','N&#xE4;chste Termine','N&#xe4;chste Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\nif (titleIdx === -1) throw new Error('Heading \"Nächste Termine\" nicht gefunden. pageId:' + pageId);\n\nvar panelMacroTag = '<ac:structured-macro ac:name=\"panel\"';\nvar panelStart    = html.indexOf(panelMacroTag, titleIdx);\nif (panelStart === -1) throw new Error('Panel-Makro nicht gefunden. pageId:' + pageId);\n\nvar panelEndTag   = '</ac:structured-macro>';\nvar panelEnd      = html.indexOf(panelEndTag, panelStart);\nif (panelEnd === -1) throw new Error('Panel-Ende nicht gefunden. pageId:' + pageId);\nvar panelEnd_full = panelEnd + panelEndTag.length;\nvar panelBlock    = html.substring(panelStart, panelEnd_full);\n\n// Tabelle aufbauen\nvar tableLocalId = 'termine-tbl-' + pageId + '-0001';\nvar headerRow = '<tr>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h1\"><p><strong>Datum</strong></p></th>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h2\"><p><strong>Uhrzeit</strong></p></th>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h3\"><p><strong>Titel</strong></p></th>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h4\"><p><strong>Ort</strong></p></th>'\n  + '</tr>';\n\nvar dataRows = '';\nfor (var ri = 0; ri < termine.length; ri++) {\n  var t = termine[ri];\n  var rowId = tableLocalId + '-r' + ri;\n  dataRows += '<tr ac:local-id=\"'+rowId+'\">'\n    + '<td ac:local-id=\"'+rowId+'-c1\"><p>'+esc(t.datumStr)  +'</p></td>'\n    + '<td ac:local-id=\"'+rowId+'-c2\"><p>'+esc(t.uhrzeitStr)+'</p></td>'\n    + '<td ac:local-id=\"'+rowId+'-c3\"><p>'+esc(t.titel)     +'</p></td>'\n    + '<td ac:local-id=\"'+rowId+'-c4\"><p>'+esc(t.ort)       +'</p></td>'\n    + '</tr>';\n}\n\nvar tableHtml = termine.length > 0\n  ? '<table data-table-width=\"760\" data-layout=\"default\" ac:local-id=\"'+tableLocalId+'\">'\n    + '<tbody>'+headerRow+dataRows+'</tbody></table>'\n  : '<p></p>';\n\nvar newRTB = '<ac:rich-text-body>' + tableHtml + '</ac:rich-text-body>';\n\nvar newPanelBlock;\nvar selfClosing = '<ac:rich-text-body />';\nif (panelBlock.indexOf(selfClosing) !== -1) {\n  newPanelBlock = panelBlock.replace(selfClosing, newRTB);\n} else {\n  var rtbOpen  = '<ac:rich-text-body>';\n  var rtbClose = '</ac:rich-text-body>';\n  var rtbStart = panelBlock.indexOf(rtbOpen);\n  var rtbEnd   = panelBlock.indexOf(rtbClose);\n  if (rtbStart===-1||rtbEnd===-1) throw new Error('ac:rich-text-body nicht gefunden. pageId:'+pageId);\n  newPanelBlock = panelBlock.substring(0,rtbStart) + newRTB\n    + panelBlock.substring(rtbEnd+rtbClose.length);\n}\n\nhtml = html.substring(0,panelStart) + newPanelBlock + html.substring(panelEnd_full);\nreturn { json: {\n  pageId,\n  pageTitle,\n  newVersion:  currentVersion + 1,\n  updatedHtml: html,\n  confluencePageId: loopItem.confluencePageId\n}};\n"
+      },
+      "id": "code-tabelle-v12",
+      "name": "Code: Tabelle aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.pageId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ version: { number: $json.newVersion }, title: $json.pageTitle, type: 'page', body: { storage: { value: $json.updatedHtml, representation: 'storage' } } }) }}",
+        "options": {}
+      },
+      "id": "confluence-put-v12",
+      "name": "Confluence: Seite aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1952,
+        300
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Code: Kunden normalisieren\n// Liest Notion-Kunden-Daten und normalisiert Feldnamen\nvar items = $input.all();\nif (!items || items.length === 0) return [];\n\nreturn items.map(function(item) {\n  var p = item.json;\n  var confPageId = p.property_confluence_page_i_d\n    || p.property_confluence_page_id\n    || p.property_confluencepageid\n    || '';\n  var spaceKey = p.property_confluence_space_key\n    || p.property_confluencespacekey\n    || p.property_confluence_spacekey\n    || '';\n  return {\n    json: {\n      _typ:             'kunde',\n      _pageId:          p.id || '',\n      _confluencePageId: confPageId,\n      _spaceKey:        spaceKey\n    }\n  };\n}).filter(function(i) { return i.json._confluencePageId !== ''; });\n"
+      },
+      "id": "code-set-kunden-v13",
+      "name": "Code: Kunden normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Code: Termine normalisieren\nvar items = $input.all();\nif (!items || items.length === 0) return [];\n\nreturn items.map(function(item) {\n  var p = item.json;\n\n  var datumObj = p.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start)                                 { datumRaw = datumObj.start; }\n  else if (typeof datumObj === 'string' && datumObj.length >= 10) { datumRaw = datumObj; }\n  if (!datumRaw) return null;\n\n  var datumIso   = datumRaw.substring(0, 10);\n  var dp         = datumIso.split('-');\n  var datumStr   = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx       = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  var kundenRaw = p.property_kunden || [];\n  var kundenIds = Array.isArray(kundenRaw) ? kundenRaw.filter(Boolean) : [];\n\n  return {\n    json: {\n      _typ:       'termin',\n      _datumIso:   datumIso,\n      _datumStr:   datumStr,\n      _uhrzeitStr: uhrzeitStr,\n      _titel:      String(p.property_titel || p.name || 'Kein Titel'),\n      _ort:        String(p.property_ort   || ''),\n      _kundenIds:  kundenIds\n    }\n  };\n}).filter(Boolean);\n"
+      },
+      "id": "code-set-termine-v13",
+      "name": "Code: Termine normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "merge-v13",
+      "name": "Merge: Kunden + Termine",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        832,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Alle Kunden holen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion: Aktive Termine holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Alle Kunden holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Aktive Termine holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Termine normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Kunden + Termine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Termine normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Kunden + Termine",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge: Kunden + Termine": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden + Termine zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden + Termine zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Ein Kunde pro Durchlauf": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Confluence: Seite holen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Tabelle aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Tabelle aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Seite aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Seite aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "22602e12-3499-4df2-be6f-e5295fa9d911",
+  "meta": {
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "TermineV12AllKunden",
+  "tags": []
+}
