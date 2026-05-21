@@ -1,5 +1,5 @@
 {
-  "name": "Termine → Confluence Panel",
+  "name": "Termine → Confluence Panel [v14d]",
   "nodes": [
     {
       "parameters": {
@@ -12,14 +12,45 @@
           ]
         }
       },
-      "id": "a1b2c3d4-e001-4000-8000-000000000001",
+      "id": "f649c876-f492-4afa-ac85-a8011874e00d",
       "name": "Alle 15 Minuten",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        160,
-        400
+        3104,
+        1376
       ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2f847c76-2802-80d2-9337-ed2a1f1b7256",
+          "mode": "id",
+          "cachedResultName": "DB Kunden",
+          "cachedResultUrl": "https://www.notion.so/2f847c76280280d29337ed2a1f1b7256"
+        },
+        "returnAll": true,
+        "filterType": "json",
+        "filterJson": "{\"property\": \"Confluence PageID\", \"rich_text\": {\"is_not_empty\": true}}",
+        "options": {}
+      },
+      "id": "a0d889c6-7e6f-4924-8cb2-f1cfd83f4005",
+      "name": "Notion: Alle Kunden holen",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        3328,
+        1248
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
     },
     {
       "parameters": {
@@ -33,15 +64,17 @@
           "cachedResultUrl": "https://www.notion.so/36347c76280280e0b5c1cb867c9cc3ce"
         },
         "returnAll": true,
+        "filterType": "json",
+        "filterJson": "{\"property\": \"Loeschen\", \"checkbox\": {\"equals\": false}}",
         "options": {}
       },
-      "id": "a1b2c3d4-e002-4000-8000-000000000002",
-      "name": "Notion: Alle Termine holen",
+      "id": "61d7613a-29d7-4656-abe0-0cbc1ba91c58",
+      "name": "Notion: Aktive Termine holen",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        384,
-        400
+        3328,
+        1488
       ],
       "credentials": {
         "notionApi": {
@@ -52,84 +85,44 @@
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================\n// Code: Nach Empfaenger aufteilen (v2 – komplexe Routing-Logik)\n// Ersetzt: \"Code: Nach Kunden aufteilen\"\n//\n// WICHTIG: Dieser Node gibt pro Termin MEHRERE Items aus:\n//   - 1 Item pro direktem Kunden-Empfänger (Logik a)\n//   - 1 Item pro Gruppen-Empfänger (Logik b/c – wird später aufgelöst)\n//\n// Die ActiveProject-Prüfung für Gruppenmitglieder erfolgt in einem\n// NACHGELAGERTEN Node (\"Code: Gruppen-Mitglieder auflösen\"), weil\n// dafür Notion-API-Calls pro Mitglied nötig sind.\n// ============================================================\n\nvar items = $input.all();\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\n\n// Ergebnis-Map: empfaengerKey → { empfaengerPageId, empfaengerTyp, termine[] }\n// empfaengerKey = pageId für Eindeutigkeit\nvar empfaengerMap = {};\n\nfunction addTermin(pageId, typ, termin) {\n  if (!empfaengerMap[pageId]) {\n    empfaengerMap[pageId] = {\n      empfaengerPageId: pageId,\n      empfaengerTyp: typ,\n      termine: []\n    };\n  }\n  // Duplikat-Schutz: gleicher Termin nicht zweimal hinzufügen\n  var exists = empfaengerMap[pageId].termine.some(function(t) {\n    return t.datumIso === termin.datumIso && t.titel === termin.titel;\n  });\n  if (!exists) {\n    empfaengerMap[pageId].termine.push(termin);\n  }\n}\n\nfor (var i = 0; i < items.length; i++) {\n  var props = items[i].json;\n\n  // --- Datum prüfen ---\n  var datumObj = props.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start)                               { datumRaw = datumObj.start; }\n  else if (typeof datumObj === 'string' && datumObj.length >= 10) { datumRaw = datumObj; }\n  if (!datumRaw) continue;\n\n  var terminDate = new Date(datumRaw.substring(0, 10));\n  if (terminDate < today) continue;\n\n  // --- Termin-Felder ---\n  var titel    = props.property_titel || props.name || 'Kein Titel';\n  var ort      = props.property_ort || '';\n  var datumIso = datumRaw.substring(0, 10);\n  var dp       = datumIso.split('-');\n  var datumStr = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  var termin = {\n    datumIso:   datumIso,\n    datumStr:   datumStr,\n    uhrzeitStr: uhrzeitStr,\n    titel:      titel,\n    ort:        ort\n  };\n\n  // --- Direkte Kunden aus DB Termine (Logik a) ---\n  // Diese Kunden erhalten den Termin immer direkt,\n  // unabhängig von Gruppen-Mitgliedschaft\n  var kundenRaw  = props.property_kunden || [];\n  var kundenIds  = Array.isArray(kundenRaw) ? kundenRaw : [kundenRaw];\n  for (var j = 0; j < kundenIds.length; j++) {\n    if (!kundenIds[j]) continue;\n    addTermin(kundenIds[j], 'individuell', termin);\n  }\n\n  // --- Gruppen aus DB Termine (Logik b/c) ---\n  // Gruppen erhalten den Termin immer.\n  // Ob Mitglieder zusätzlich individuell informiert werden,\n  // entscheidet der nachgelagerte Node anhand von ActiveProject.\n  var gruppenRaw = props.property_gruppen || [];\n  var gruppenIds = Array.isArray(gruppenRaw) ? gruppenRaw : [gruppenRaw];\n  for (var k = 0; k < gruppenIds.length; k++) {\n    if (!gruppenIds[k]) continue;\n    addTermin(gruppenIds[k], 'gruppe', termin);\n  }\n}\n\n// --- Ergebnis aufbauen, Termine sortieren ---\n// Alle verfügbaren Notion-Property-Keys für Diagnose (erste Iteration)\nvar debugPropKeys = items.length > 0\n  ? Object.keys(items[0].json).filter(function(k){ return k.startsWith('property_'); }).join(', ')\n  : 'keine_items';\n\nvar result = [];\nvar keys = Object.keys(empfaengerMap);\nfor (var ki = 0; ki < keys.length; ki++) {\n  var entry = empfaengerMap[keys[ki]];\n  entry.termine.sort(function(a, b) {\n    return a.datumIso < b.datumIso ? -1 : a.datumIso > b.datumIso ? 1 : 0;\n  });\n  result.push({ json: {\n    empfaengerPageId:       entry.empfaengerPageId,\n    empfaengerTyp:          entry.empfaengerTyp,\n    termine:                entry.termine,\n    _debug_terminCount:     entry.termine.length,\n    _debug_notionPropKeys:  debugPropKeys\n  }});\n}\nreturn result;"
+        "jsCode": "\n// Code: Empfänger-Map aufbauen (v14)\n// _typ='kunde'  → direkte Kunden-Empfänger\n// _typ='gruppe' → Gruppen-Empfänger + ihre Mitglieder mit eigenem Space\n// _typ='termin' → Termine mit Kunden- und Gruppen-Relationen\n//\n// Empfänger-Map: confluencePageId → { confluencePageId, termine[] }\n// Duplikat-Schutz: gleicher Termin + gleiche PageID = nur 1x\nvar alleItems = $input.all();\n\nvar today = new Date();\ntoday.setHours(0, 0, 0, 0);\nvar alleItems = $input.all();\n\n// ── Schritt 1: Kunden-Map aufbauen ──────────────────────────\n// kundePageId → { confluencePageId, spaceKey }\nvar kundeMap = {};\nfor (var k = 0; k < alleItems.length; k++) {\n  var item = alleItems[k].json;\n  if (item._typ !== 'kunde') continue;\n  if (!item._confluencePageId) continue;\n  kundeMap[item._pageId] = {\n    confluencePageId: item._confluencePageId,\n    spaceKey:         item._spaceKey || ''\n  };\n}\n\n// ── Schritt 2: Gruppen-Map aufbauen ─────────────────────────\n// gruppePageId → { confluencePageId, spaceKey, mitglieder[] }\nvar gruppeMap = {};\nfor (var g = 0; g < alleItems.length; g++) {\n  var item = alleItems[g].json;\n  if (item._typ !== 'gruppe') continue;\n  if (!item._confluencePageId) continue;\n  gruppeMap[item._pageId] = {\n    confluencePageId: item._confluencePageId,\n    spaceKey:         item._spaceKey    || '',\n    mitglieder:       item._mitglieder  || []\n  };\n}\n\n// ── Schritt 3: Empfänger-Map aufbauen ───────────────────────\n// Key: confluencePageId (eindeutig pro Space)\n// Value: { confluencePageId, termine[], termineKeys{} }\nvar empfaengerMap = {};\n\nfunction getOrCreate(confPageId) {\n  if (!empfaengerMap[confPageId]) {\n    empfaengerMap[confPageId] = {\n      confluencePageId: confPageId,\n      termine:          [],\n      _termineKeys:     {}\n    };\n  }\n  return empfaengerMap[confPageId];\n}\n\nfunction addTermin(confPageId, termin) {\n  if (!confPageId) return;\n  var emp    = getOrCreate(confPageId);\n  var dupKey = termin.datumIso + '|' + termin.titel;\n  if (emp._termineKeys[dupKey]) return; // Duplikat-Schutz\n  emp._termineKeys[dupKey] = true;\n  emp.termine.push(termin);\n}\n\n// Alle Kunden mit Confluence-Seite als Empfänger anlegen (auch ohne Termine)\nvar kundeKeys = Object.keys(kundeMap);\nfor (var ki = 0; ki < kundeKeys.length; ki++) {\n  getOrCreate(kundeMap[kundeKeys[ki]].confluencePageId);\n}\n// Alle Gruppen mit Confluence-Seite als Empfänger anlegen\nvar gruppeKeys = Object.keys(gruppeMap);\nfor (var gi = 0; gi < gruppeKeys.length; gi++) {\n  getOrCreate(gruppeMap[gruppeKeys[gi]].confluencePageId);\n}\n\n// ── Schritt 4: Termine zuordnen ─────────────────────────────\nfor (var t = 0; t < alleItems.length; t++) {\n  var item = alleItems[t].json;\n  if (item._typ !== 'termin') continue;\n\n  var datumIso = item._datumIso || '';\n  if (!datumIso || new Date(datumIso) < today) continue;\n\n  var termin = {\n    datumIso:   datumIso,\n    datumStr:   item._datumStr   || '',\n    uhrzeitStr: item._uhrzeitStr || '',\n    titel:      item._titel      || '',\n    ort:        item._ort        || ''\n  };\n\n  // Direkte Kunden-Empfänger\n  var kundenIds = item._kundenIds || [];\n  for (var ki2 = 0; ki2 < kundenIds.length; ki2++) {\n    var kId = kundenIds[ki2];\n    if (!kId || !kundeMap[kId]) continue;\n    addTermin(kundeMap[kId].confluencePageId, termin);\n  }\n\n  // Gruppen-Empfänger\n  var gruppenIds = item._gruppenIds || [];\n  for (var gi2 = 0; gi2 < gruppenIds.length; gi2++) {\n    var gId = gruppenIds[gi2];\n    if (!gId || !gruppeMap[gId]) continue;\n    var gruppe = gruppeMap[gId];\n\n    // 1. Termin in Gruppen-Space\n    addTermin(gruppe.confluencePageId, termin);\n\n    // 2. Termin in individuelle Kunden-Spaces der Mitglieder\n    for (var mi = 0; mi < gruppe.mitglieder.length; mi++) {\n      var mId = gruppe.mitglieder[mi];\n      if (!mId || !kundeMap[mId]) continue; // nur Mitglieder mit eigenem Space\n      addTermin(kundeMap[mId].confluencePageId, termin);\n    }\n  }\n}\n\n// ── Schritt 5: Ergebnis aufbauen ────────────────────────────\nvar result = [];\nvar empKeys = Object.keys(empfaengerMap);\nfor (var ei = 0; ei < empKeys.length; ei++) {\n  var emp = empfaengerMap[empKeys[ei]];\n  delete emp._termineKeys; // interne Hilfsstruktur entfernen\n  emp.termine.sort(function(a,b){\n    return a.datumIso < b.datumIso ? -1 : a.datumIso > b.datumIso ? 1 : 0;\n  });\n  result.push({ json: emp });\n}\nreturn result;\n"
       },
-      "id": "a1b2c3d4-e003-4000-8000-000000000003",
-      "name": "Code: Nach Kunden aufteilen",
+      "id": "f23837ad-79df-4ef1-b8ed-38b9b23d3608",
+      "name": "Code: Kunden + Termine zusammenführen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        608,
-        400
+        4000,
+        1376
       ]
     },
     {
       "parameters": {
         "options": {}
       },
-      "id": "a1b2c3d4-e004-4000-8000-000000000004",
+      "id": "4772b817-4139-4546-9431-6c724e3d9971",
       "name": "Loop: Ein Kunde pro Durchlauf",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        960,
-        400
+        4224,
+        1376
       ]
     },
     {
       "parameters": {
-        "resource": "databasePage",
-        "operation": "get",
-        "pageId": {
-          "__rl": true,
-          "value": "={{ $json.empfaengerPageId }}",
-          "mode": "id"
-        }
-      },
-      "id": "a1b2c3d4-e005-4000-8000-000000000005",
-      "name": "Notion: Kundendaten holen",
-      "type": "n8n-nodes-base.notion",
-      "typeVersion": 2.2,
-      "position": [
-        1280,
-        256
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "NnTc9kDS62fncKVA",
-          "name": "Notion account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// ============================================================\n// Code: Set Empfaengerdaten (v2)\n// Läuft nach: Notion: Kundendaten holen (direkte Kunden, Logik a)\n// Zweck: Liest confluencePageId + spaceKey für direkte Kunden\n//        (Gruppen und Mitglieder haben ihre Daten bereits)\n//\n// Guard 2: SpaceKey-Präfix gegen empfaengerTyp prüfen\n// ============================================================\n\nvar loopItem   = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar notionData = $json;\n\nvar confluencePageId = notionData.property_confluence_page_i_d\n  || notionData.property_confluence_page_id || '';\nvar spaceKey = notionData.property_confluence_space_key || '';\nvar termine  = loopItem.termine || [];\n\nreturn {\n  json: {\n    empfaengerPageId: loopItem.empfaengerPageId,\n    empfaengerTyp:    'individuell',\n    confluencePageId: confluencePageId,\n    spaceKey:         spaceKey,\n    termine:          termine\n  }\n};"
-      },
-      "id": "a1b2c3d4-e006-4000-8000-000000000006",
-      "name": "Set: Kundendaten",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1504,
-        400
-      ]
-    },
-    {
-      "parameters": {
-        "method": "GET",
         "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.confluencePageId }}?expand=body.storage,version,title",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpBasicAuth",
         "options": {}
       },
-      "id": "a1b2c3d4-e007-4000-8000-000000000007",
+      "id": "90fc4296-f939-45db-8017-94806e8e94e7",
       "name": "Confluence: Seite holen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1728,
-        400
+        4448,
+        1280
       ],
       "credentials": {
         "httpBasicAuth": {
@@ -141,15 +134,15 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Tabelle im 'Naechste Termine' Panel komplett neu aufbauen.\n// termine kommen aus dem vorgelagerten Merge-Node ($json.termine).\nvar page = $json;\nvar termine = $json.termine || [];\n\nvar esc = function(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };\n\nvar pageId = page.id || '';\nvar pageTitle = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value) ? page.body.storage.value : '';\n\n// Alle <ac:rich-text-body> Abschnitte sammeln\nvar rtbOpen = '<ac:rich-text-body>';\nvar rtbClose = '</ac:rich-text-body>';\nvar allSections = [];\nvar sp = 0;\nwhile (true) {\n  var oi = html.indexOf(rtbOpen, sp);\n  if (oi === -1) break;\n  var s = oi + rtbOpen.length;\n  var e = html.indexOf(rtbClose, s);\n  if (e === -1) break;\n  allSections.push({ start: s, end: e });\n  sp = e + rtbClose.length;\n}\n\n// Titel suchen (mehrere Encodings)\nvar panelTitles = ['N\\u00e4chste Termine', 'N&auml;chste Termine', 'N&#228;chste Termine', 'N&#xE4;chste Termine', 'N&#xe4;chste Termine', 'Termine'];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\n\nvar bodyStart = -1;\nvar bodyEnd = -1;\n\n// Methode 1a: Section die titleIdx ENTHAELT (Titel ist Heading im Body)\nif (titleIdx !== -1) {\n  for (var si = 0; si < allSections.length; si++) {\n    if (allSections[si].start <= titleIdx && titleIdx < allSections[si].end) {\n      bodyStart = allSections[si].start; bodyEnd = allSections[si].end; break;\n    }\n  }\n}\n// Methode 1b: Erste Section NACH titleIdx\nif (bodyStart === -1 && titleIdx !== -1) {\n  for (var si1b = 0; si1b < allSections.length; si1b++) {\n    if (allSections[si1b].start > titleIdx) {\n      bodyStart = allSections[si1b].start; bodyEnd = allSections[si1b].end; break;\n    }\n  }\n}\n// Methode 2: Section mit Datum+Uhrzeit-Headern (vorhandene Tabelle)\nif (bodyStart === -1) {\n  for (var si2 = 0; si2 < allSections.length; si2++) {\n    var sc2 = html.substring(allSections[si2].start, allSections[si2].end);\n    if (sc2.indexOf('>Datum<') !== -1 && sc2.indexOf('>Uhrzeit<') !== -1) {\n      bodyStart = allSections[si2].start; bodyEnd = allSections[si2].end; break;\n    }\n  }\n}\n// Methode 3: ac:layout-cell das titleIdx enthaelt\nif (bodyStart === -1 && titleIdx !== -1) {\n  var cellOpen = '<ac:layout-cell>';\n  var cellClose = '</ac:layout-cell>';\n  var cp = 0;\n  while (true) {\n    var ci = html.indexOf(cellOpen, cp);\n    if (ci === -1) break;\n    var cs = ci + cellOpen.length;\n    var ce = html.indexOf(cellClose, cs);\n    if (ce === -1) break;\n    if (cs <= titleIdx && titleIdx < ce) { bodyStart = cs; bodyEnd = ce; break; }\n    cp = ce + cellClose.length;\n  }\n}\n\nif (bodyStart === -1 || bodyEnd === -1) {\n  var tIdx2 = html.indexOf('Termine');\n  var ctx = tIdx2 !== -1 ? html.substring(Math.max(0, tIdx2 - 200), Math.min(html.length, tIdx2 + 400)) : 'nicht_gefunden';\n  throw new Error('Panel nicht gefunden. pageId:' + pageId + ' sections:' + allSections.length + ' titleIdx:' + titleIdx + ' || ' + ctx);\n}\n\n// Heading (h1/h2/h3) erhalten, Rest ersetzen\nvar bodyContent = html.substring(bodyStart, bodyEnd);\nvar headingPart = '';\nvar headingTags = ['</h1>', '</h2>', '</h3>'];\nfor (var ht = 0; ht < headingTags.length; ht++) {\n  var hEnd = bodyContent.indexOf(headingTags[ht]);\n  if (hEnd !== -1) { headingPart = bodyContent.substring(0, hEnd + headingTags[ht].length); break; }\n}\n\n// Tabelle komplett neu aufbauen aus termine[]\nvar headerRow = '<tr><th>Datum</th><th>Uhrzeit</th><th>Titel</th><th>Ort</th></tr>';\nvar dataRows = '';\nfor (var ri = 0; ri < termine.length; ri++) {\n  var t = termine[ri];\n  dataRows += '<tr><td>' + esc(t.datumStr) + '</td><td>' + esc(t.uhrzeitStr) + '</td><td>' + esc(t.titel) + '</td><td>' + esc(t.ort) + '</td></tr>';\n}\n\nvar tableHtml = termine.length > 0 ? '<table><tbody>' + headerRow + dataRows + '</tbody></table>' : '';\nvar newBodyContent = headingPart + tableHtml;\n\nhtml = html.substring(0, bodyStart) + newBodyContent + html.substring(bodyEnd);\n\nreturn { json: { pageId: pageId, pageTitle: pageTitle, newVersion: currentVersion + 1, updatedHtml: html } };"
+        "jsCode": "\nvar page     = $json;\nvar loopItem = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar termine  = loopItem.termine || [];\n\nvar esc = function(s) {\n  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\n};\n\nvar pageId       = page.id    || '';\nvar pageTitle    = page.title || '';\nvar currentVersion = (page.version && page.version.number) ? page.version.number : 1;\nvar html = (page.body && page.body.storage && page.body.storage.value)\n  ? page.body.storage.value : '';\n\n// Tabelle aufbauen\nvar tableLocalId = 'termine-tbl-' + pageId + '-0001';\nvar headerRow = '<tr>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h1\"><p><strong>Datum</strong></p></th>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h2\"><p><strong>Uhrzeit</strong></p></th>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h3\"><p><strong>Titel</strong></p></th>'\n  + '<th ac:local-id=\"'+tableLocalId+'-h4\"><p><strong>Ort</strong></p></th>'\n  + '</tr>';\n\nvar dataRows = '';\nfor (var ri = 0; ri < termine.length; ri++) {\n  var t = termine[ri];\n  var rowId = tableLocalId + '-r' + ri;\n  dataRows += '<tr ac:local-id=\"'+rowId+'\">'\n    + '<td ac:local-id=\"'+rowId+'-c1\"><p>'+esc(t.datumStr)  +'</p></td>'\n    + '<td ac:local-id=\"'+rowId+'-c2\"><p>'+esc(t.uhrzeitStr)+'</p></td>'\n    + '<td ac:local-id=\"'+rowId+'-c3\"><p>'+esc(t.titel)     +'</p></td>'\n    + '<td ac:local-id=\"'+rowId+'-c4\"><p>'+esc(t.ort)       +'</p></td>'\n    + '</tr>';\n}\n\nvar tableHtml = termine.length > 0\n  ? '<table data-table-width=\"760\" data-layout=\"default\" ac:local-id=\"'+tableLocalId+'\">'\n    + '<tbody>'+headerRow+dataRows+'</tbody></table>'\n  : '<p></p>';\n\nvar newRTB = '<ac:rich-text-body>' + tableHtml + '</ac:rich-text-body>';\n\n// ── Panel suchen ────────────────────────────────────────────\nvar panelTitles = [\n  'N\\u00e4chste Termine','N&auml;chste Termine',\n  'N&#228;chste Termine','N&#xE4;chste Termine','N&#xe4;chste Termine',\n  'N&#Xe4;chste Termine','Termine'\n];\nvar titleIdx = -1;\nfor (var ti = 0; ti < panelTitles.length; ti++) {\n  titleIdx = html.indexOf(panelTitles[ti]);\n  if (titleIdx !== -1) break;\n}\n\n// Panel-Makro nach Heading suchen\nvar panelStart = -1;\nvar panelEnd_full = -1;\nvar panelBlock = '';\n\nif (titleIdx !== -1) {\n  var panelMacroTag = '<ac:structured-macro ac:name=\"panel\"';\n  // Suche Panel-Makro NACH dem Heading (max 2000 Zeichen danach)\n  var searchFrom = Math.max(0, titleIdx - 500);\n  var candidate  = html.indexOf(panelMacroTag, searchFrom);\n  if (candidate !== -1 && candidate < titleIdx + 2000) {\n    panelStart = candidate;\n    var panelEndTag = '</ac:structured-macro>';\n    var panelEnd    = html.indexOf(panelEndTag, panelStart);\n    if (panelEnd !== -1) {\n      panelEnd_full = panelEnd + panelEndTag.length;\n      panelBlock    = html.substring(panelStart, panelEnd_full);\n    }\n  }\n}\n\nif (panelStart !== -1 && panelEnd_full !== -1) {\n  // Panel gefunden → rich-text-body ersetzen\n  var newPanelBlock;\n  var selfClosing = '<ac:rich-text-body />';\n  if (panelBlock.indexOf(selfClosing) !== -1) {\n    newPanelBlock = panelBlock.replace(selfClosing, newRTB);\n  } else {\n    var rtbOpen  = '<ac:rich-text-body>';\n    var rtbClose = '</ac:rich-text-body>';\n    var rtbStart = panelBlock.indexOf(rtbOpen);\n    var rtbEnd   = panelBlock.indexOf(rtbClose);\n    if (rtbStart !== -1 && rtbEnd !== -1) {\n      newPanelBlock = panelBlock.substring(0, rtbStart) + newRTB\n        + panelBlock.substring(rtbEnd + rtbClose.length);\n    } else {\n      // Fallback: Panel-Ende ersetzen\n      newPanelBlock = panelBlock.replace('</ac:structured-macro>', newRTB + '</ac:structured-macro>');\n    }\n  }\n  html = html.substring(0, panelStart) + newPanelBlock + html.substring(panelEnd_full);\n} else {\n  // Panel nicht gefunden → bestehende ac:rich-text-body mit tableLocalId suchen\n  // (bereits eingefügte Tabelle ersetzen)\n  var existingTable = 'ac:local-id=\"' + tableLocalId + '\"';\n  if (html.indexOf(existingTable) !== -1) {\n    // Tabelle bereits vorhanden – ganzen Table-Block ersetzen\n    var tblStart = html.lastIndexOf('<table', html.indexOf(existingTable));\n    var tblEnd   = html.indexOf('</table>', tblStart) + '</table>'.length;\n    if (tblStart !== -1 && tblEnd > tblStart) {\n      html = html.substring(0, tblStart) + tableHtml + html.substring(tblEnd);\n    }\n  } else {\n    // Absoluter Fallback: ans Ende anhängen (verhindert doppelte Tabellen)\n    html = html + tableHtml;\n  }\n}\n\nreturn { json: { pageId, pageTitle, newVersion: currentVersion+1, updatedHtml: html } };\n"
       },
-      "id": "a1b2c3d4-e008-4000-8000-000000000008",
+      "id": "40cd4bbd-6436-4e42-af91-9c639b7b877b",
       "name": "Code: Tabelle aufbauen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1952,
-        400
+        4672,
+        1280
       ]
     },
     {
@@ -173,13 +166,13 @@
         "body": "={{ JSON.stringify({ version: { number: $json.newVersion }, title: $json.pageTitle, type: 'page', body: { storage: { value: $json.updatedHtml, representation: 'storage' } } }) }}",
         "options": {}
       },
-      "id": "a1b2c3d4-e009-4000-8000-000000000009",
+      "id": "faadadeb-745a-4bec-8ab6-04f8d429b730",
       "name": "Confluence: Seite aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2176,
-        400
+        4896,
+        1280
       ],
       "credentials": {
         "httpBasicAuth": {
@@ -190,103 +183,64 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "var items = $input.all();\nvar errors = items.filter(function(i) { return i.json._guard_error === true; });\n\nif (errors.length > 0) {\n  var errorDetails = errors.map(function(e) {\n    return '\\u2022 \"' + e.json.titel + '\" (' + e.json.notionPageId + '): ' + e.json._error_reason;\n  }).join('\\n');\n\n  return errors.map(function(e) {\n    return {\n      json: {\n        _guard_triggered: true,\n        notionPageId: e.json.notionPageId,\n        titel: e.json.titel,\n        errorReason: e.json._error_reason,\n        errorSummary: errorDetails,\n        timestamp: new Date().toISOString()\n      }\n    };\n  });\n}\n\nreturn items.filter(function(i) { return !i.json._guard_error; });"
+        "jsCode": "\n// Code: Kunden normalisieren\n// Liest Notion-Kunden-Daten und normalisiert Feldnamen\nvar items = $input.all();\nif (!items || items.length === 0) return [];\n\nreturn items.map(function(item) {\n  var p = item.json;\n  var confPageId = p.property_confluence_page_i_d\n    || p.property_confluence_page_id\n    || p.property_confluencepageid\n    || '';\n  var spaceKey = p.property_confluence_space_key\n    || p.property_confluencespacekey\n    || p.property_confluence_spacekey\n    || '';\n  return {\n    json: {\n      _typ:             'kunde',\n      _pageId:          p.id || '',\n      _confluencePageId: confPageId,\n      _spaceKey:        spaceKey\n    }\n  };\n}).filter(function(i) { return i.json._confluencePageId !== ''; });\n"
       },
-      "id": "861ee97e-be07-4bd1-98f2-d3f6bc5037ad",
-      "name": "Guard: Konsistenz-Check",
+      "id": "5dc468f6-74e9-4afe-90b1-ba1623ab159a",
+      "name": "Code: Kunden normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        720,
-        400
+        3552,
+        1248
       ]
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "cd70b203-e22d-405c-9041-a6b9c4d6ebcc",
-              "leftValue": "={{ $json._guard_triggered }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals",
-                "name": "filter.operator.equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+        "jsCode": "\nvar items = $input.all();\nif (!items || items.length === 0) return [];\n\nreturn items.map(function(item) {\n  var p = item.json;\n\n  var datumObj = p.property_datum;\n  var datumRaw = null;\n  if (datumObj && datumObj.start)                                 { datumRaw = datumObj.start; }\n  else if (typeof datumObj === 'string' && datumObj.length >= 10) { datumRaw = datumObj; }\n  if (!datumRaw) return null;\n\n  var datumIso   = datumRaw.substring(0, 10);\n  var dp         = datumIso.split('-');\n  var datumStr   = dp[2] + '.' + dp[1] + '.' + dp[0];\n  var uhrzeitStr = '';\n  var tIdx       = datumRaw.indexOf('T');\n  if (tIdx !== -1) { uhrzeitStr = datumRaw.substring(tIdx + 1, tIdx + 6); }\n\n  var kundenRaw  = p.property_kunden     || [];\n  var gruppenRaw = p.property_db_gruppen || [];\n\n  return {\n    json: {\n      _typ:        'termin',\n      _datumIso:   datumIso,\n      _datumStr:   datumStr,\n      _uhrzeitStr: uhrzeitStr,\n      _titel:      String(p.property_titel || p.name || 'Kein Titel'),\n      _ort:        String(p.property_ort   || ''),\n      _kundenIds:  (Array.isArray(kundenRaw)  ? kundenRaw  : [kundenRaw] ).filter(Boolean),\n      _gruppenIds: (Array.isArray(gruppenRaw) ? gruppenRaw : [gruppenRaw]).filter(Boolean)\n    }\n  };\n}).filter(Boolean);\n"
       },
-      "id": "84b8dc5b-f401-4785-a989-62353572a80d",
-      "name": "IF: Guard-Fehler",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
+      "id": "b2b833ec-497b-4741-9139-78d9785bcbee",
+      "name": "Code: Termine normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        832,
-        400
+        3552,
+        1488
       ]
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "8b380134-38d9-4ca8-89c7-4477672fdf16",
-              "leftValue": "={{ $json.empfaengerTyp }}",
-              "rightValue": "gruppe",
-              "operator": {
-                "type": "string",
-                "operation": "equals",
-                "name": "filter.operator.equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+        "numberInputs": 3
       },
-      "id": "c04f3743-09bd-4a7a-bd40-d1471e8fb34b",
-      "name": "IF: Empfaenger-Typ",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
+      "id": "fa28b4fb-cf82-403b-bb28-aef8445cdec4",
+      "name": "Merge: Kunden + Termine + Gruppen",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
       "position": [
-        1088,
-        400
+        3776,
+        1376
       ]
     },
     {
       "parameters": {
         "resource": "databasePage",
-        "operation": "get",
-        "pageId": {
+        "operation": "getAll",
+        "databaseId": {
           "__rl": true,
-          "value": "={{ $json.empfaengerPageId }}",
-          "mode": "id"
-        }
+          "value": "36647c76-2802-8085-a36f-ff0f451b6c3d",
+          "mode": "id",
+          "cachedResultName": "DB Gruppen",
+          "cachedResultUrl": "https://www.notion.so/36647c7628028085a36fff0f451b6c3d"
+        },
+        "returnAll": true,
+        "options": {}
       },
-      "id": "757e292a-e382-47cb-8087-df603c6b7e61",
-      "name": "Notion: Gruppendaten holen",
+      "id": "fd7a8608-468f-4001-b636-fcb6d6a0b34a",
+      "name": "Notion: Alle Gruppen holen",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        1280,
-        544
+        3328,
+        1648
       ],
       "credentials": {
         "notionApi": {
@@ -297,140 +251,15 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// ============================================================\n// Code: Gruppen-Mitglieder auflösen (NEU)\n// Läuft nach: Notion: Gruppendaten holen\n// Zweck: Prüft ActiveProject für alle Gruppenmitglieder\n//        und erzeugt zusätzliche individuelle Items (Logik b)\n//\n// Input ($json): Notion-Daten der Gruppe inkl. DB Kunden Relation\n// Input (Loop):  empfaengerTyp='gruppe', termine[], confluencePageId\n//\n// Output:\n//   - 1 Item für den Gruppen-Space (immer)\n//   - 0-n Items für individuelle Kunden (nur wenn ActiveProject=true)\n//\n// WICHTIG: Dieser Node gibt mehrere Items zurück.\n//          ActiveProject wird aus den Mitgliedsdaten gelesen,\n//          die Notion bereits in der Relation mitliefert.\n//          Falls Notion die Relation nicht expanded, muss ein\n//          separater \"Notion: Mitglied laden\"-Node ergänzt werden.\n// ============================================================\n\nvar loopItem = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar gruppenData = $json; // Notion-Daten der Gruppe\n\n// Gruppen-SpaceKey + PageID für Confluence\nvar gruppenSpaceKey      = gruppenData.property_confluence_space_key || '';\nvar gruppenConfluencePageId = gruppenData.property_confluence_page_i_d\n  || gruppenData.property_confluence_page_id || '';\n\n// Termine aus dem Loop\nvar termine = loopItem.termine || [];\n\n// Mitglieder der Gruppe: Relation \"DB Kunden\"\n// Notion liefert Relation als Array von Page-IDs\nvar mitgliederRaw = gruppenData.property_db_kunden || [];\nvar mitgliederIds = Array.isArray(mitgliederRaw) ? mitgliederRaw : [mitgliederRaw];\n\n// Ergebnis-Items\nvar result = [];\n\n// 1. Gruppen-Space bekommt den Termin IMMER (Logik b + c)\nresult.push({\n  json: {\n    empfaengerPageId:    loopItem.empfaengerPageId,\n    empfaengerTyp:       'gruppe',\n    confluencePageId:    gruppenConfluencePageId,\n    spaceKey:            gruppenSpaceKey,\n    termine:             termine,\n    _mitgliederZuPruefen: mitgliederIds.filter(Boolean)\n  }\n});\n\n// 2. Pro Mitglied: ActiveProject prüfen\n// Notion expanded Relationen nicht automatisch –\n// daher werden Mitglieder-PageIds für den nachgelagerten\n// \"Notion: Mitglied laden\"-Node ausgegeben.\n// Der ActiveProject-Check erfolgt in \"Code: ActiveProject filtern\".\nfor (var m = 0; m < mitgliederIds.length; m++) {\n  var mitgliedId = mitgliederIds[m];\n  if (!mitgliedId) continue;\n  result.push({\n    json: {\n      empfaengerPageId:  mitgliedId,\n      empfaengerTyp:     'mitglied_check', // Zwischenstatus – wird aufgelöst\n      termine:           termine,\n      _gruppePageId:     loopItem.empfaengerPageId,\n      _gruppeSpaceKey:   gruppenSpaceKey\n    }\n  });\n}\n\nreturn result;"
+        "jsCode": "\nvar items = $input.all();\nif (!items || items.length === 0) return [];\n\nreturn items.map(function(item) {\n  var p = item.json;\n\n  var confPageId = p.property_confluence_page_id || '';\n  var spaceKey   = p.property_confluence_space_key || '';\n  var mitglieder = p.property_db_kunden || [];\n  if (!Array.isArray(mitglieder)) mitglieder = [mitglieder];\n  var aktiv = p.property_aktiv !== false;\n\n  return {\n    json: {\n      _typ:              'gruppe',\n      _pageId:           p.id || '',\n      _confluencePageId: String(confPageId).trim(),\n      _spaceKey:         String(spaceKey).trim(),\n      _mitglieder:       mitglieder.filter(Boolean),\n      _aktiv:            aktiv\n    }\n  };\n}).filter(function(i) {\n  return i.json._confluencePageId !== '' && i.json._aktiv;\n});\n"
       },
-      "id": "a1b2c3d4-e010-4000-8000-000000000010",
-      "name": "Code: Gruppen-Mitglieder auflösen",
+      "id": "853ee286-a732-40d5-9b08-2171b069b934",
+      "name": "Code: Gruppen normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1504,
-        680
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
-          },
-          "conditions": [
-            {
-              "id": "b1234567-1234-4000-8000-000000000001",
-              "leftValue": "={{ $json.empfaengerTyp }}",
-              "rightValue": "mitglied_check",
-              "operator": {
-                "type": "string",
-                "operation": "equals",
-                "name": "filter.operator.equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "a1b2c3d4-e011-4000-8000-000000000011",
-      "name": "IF: Mitglied-Check",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        1728,
-        680
-      ]
-    },
-    {
-      "parameters": {
-        "resource": "databasePage",
-        "operation": "get",
-        "pageId": {
-          "__rl": true,
-          "value": "={{ $json.empfaengerPageId }}",
-          "mode": "id"
-        }
-      },
-      "id": "a1b2c3d4-e012-4000-8000-000000000012",
-      "name": "Notion: Mitglied laden",
-      "type": "n8n-nodes-base.notion",
-      "typeVersion": 2.2,
-      "position": [
-        1952,
-        680
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "NnTc9kDS62fncKVA",
-          "name": "Notion account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// ============================================================\n// Code: ActiveProject filtern (NEU)\n// Läuft nach: Notion: Mitglied laden\n// Zweck: Entscheidet anhand ActiveProject ob Mitglied\n//        individuell informiert wird (Logik b vs. c)\n//\n// Logik b) ActiveProject=true  → individuellen Kunden-Space befüllen\n// Logik c) ActiveProject=false → kein individueller Space, Item verwerfen\n// ============================================================\n\nvar mitgliedData = $json;\n\n// ActiveProject Checkbox aus DB Kunden (mehrere mögliche Property-Namen)\nvar activeProject = mitgliedData.property_active_project\n  || mitgliedData.property_activeproject\n  || mitgliedData.property_activproject\n  || false;\n\n// Kunden-SpaceKey + PageID für Confluence\nvar kundenSpaceKey         = mitgliedData.property_confluence_space_key || '';\nvar kundenConfluencePageId = mitgliedData.property_confluence_page_i_d\n  || mitgliedData.property_confluence_page_id || '';\n\n// Termine aus dem Loop-Kontext\nvar loopContext = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar termine     = loopContext.termine || [];\n\n// Logik c: ActiveProject=false → Item verwerfen\nif (!activeProject) {\n  return [];\n}\n\nreturn [{\n  json: {\n    empfaengerPageId:  mitgliedData.id || '',\n    empfaengerTyp:     'individuell',\n    confluencePageId:  kundenConfluencePageId,\n    spaceKey:          kundenSpaceKey,\n    termine:           termine,\n    _activeProject:    true\n  }\n}];"
-      },
-      "id": "a1b2c3d4-e013-4000-8000-000000000013",
-      "name": "Code: ActiveProject filtern",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2176,
-        680
-      ]
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/spaces/{{ $json.spaceKey }}?expand=homepage",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "options": {}
-      },
-      "id": "a1b2c3d4-e014-4000-8000-000000000014",
-      "name": "Confluence: Space-Homepage holen",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1952,
-        840
-      ],
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "OncAUjZtrqWedJug",
-          "name": "Unnamed credential 2"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "// ============================================================\n// Code: Gruppen-PageId setzen (NEU)\n// Läuft nach: Confluence: Space-Homepage holen\n// Zweck: Extrahiert die Confluence Page ID der Gruppen-Homepage\n//        (Gruppen haben keine gespeicherte PageID in Notion – nur Space Key)\n//\n// Input ($json):  Confluence Spaces-API Response\n//                 { homepage: { id: \"12345678\", title: \"...\" }, key: \"GDtest\", ... }\n// Input (Loop):   empfaengerTyp='gruppe', spaceKey, termine[]\n// ============================================================\n\nvar homepageResp = $json;\nvar gruppenItem  = $('Code: Gruppen-Mitglieder auflösen').item.json;\n\n// Homepage-ID aus Confluence Spaces-Antwort extrahieren\nvar confluencePageId = '';\nif (homepageResp.homepage && homepageResp.homepage.id) {\n  confluencePageId = String(homepageResp.homepage.id);\n}\n\nif (!confluencePageId) {\n  throw new Error(\n    'GRUPPEN-FEHLER: Keine Homepage-ID für Space \"' + gruppenItem.spaceKey + '\" gefunden. ' +\n    'Response-Keys: ' + Object.keys(homepageResp).join(', ')\n  );\n}\n\nreturn {\n  json: {\n    empfaengerPageId: gruppenItem.empfaengerPageId,\n    empfaengerTyp:    'gruppe',\n    confluencePageId: confluencePageId,\n    spaceKey:         gruppenItem.spaceKey,\n    termine:          gruppenItem.termine || []\n  }\n};"
-      },
-      "id": "a1b2c3d4-e015-4000-8000-000000000015",
-      "name": "Code: Gruppen-PageId setzen",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2176,
-        840
-      ]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "var conflPage = $json;\nvar termine = [];\n\n// Pfad a: Direkte Kunden\ntry {\n  var t1 = $('Set: Kundendaten').item.json.termine;\n  if (Array.isArray(t1) && t1.length > 0) termine = t1;\n} catch(e) {}\n\n// Pfad c: Gruppen-Space\nif (termine.length === 0) {\n  try {\n    var t2 = $('Code: Gruppen-PageId setzen').item.json.termine;\n    if (Array.isArray(t2) && t2.length > 0) termine = t2;\n  } catch(e) {}\n}\n\n// Pfad b: Aktive Mitglieder\nif (termine.length === 0) {\n  try {\n    var t3 = $('Code: ActiveProject filtern').item.json.termine;\n    if (Array.isArray(t3) && t3.length > 0) termine = t3;\n  } catch(e) {}\n}\n\nreturn {\n  json: {\n    id:      conflPage.id      || '',\n    title:   conflPage.title   || '',\n    version: conflPage.version || { number: 1 },\n    body:    conflPage.body    || {},\n    termine: termine\n  }\n};"
-      },
-      "id": "a1b2c3d4-e016-4000-8000-000000000016",
-      "name": "Code: Confluence + Termine mergen",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1840,
-        400
+        3552,
+        1648
       ]
     }
   ],
@@ -440,29 +269,94 @@
       "main": [
         [
           {
-            "node": "Notion: Alle Termine holen",
+            "node": "Notion: Alle Kunden holen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion: Aktive Termine holen",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion: Alle Gruppen holen",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Notion: Alle Termine holen": {
+    "Notion: Alle Kunden holen": {
       "main": [
         [
           {
-            "node": "Code: Nach Kunden aufteilen",
+            "node": "Code: Kunden normalisieren",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code: Nach Kunden aufteilen": {
+    "Notion: Aktive Termine holen": {
       "main": [
         [
           {
-            "node": "Guard: Konsistenz-Check",
+            "node": "Code: Termine normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Alle Gruppen holen": {
+      "main": [
+        [
+          {
+            "node": "Code: Gruppen normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Kunden + Termine + Gruppen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Termine normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Kunden + Termine + Gruppen",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge: Kunden + Termine + Gruppen": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden + Termine zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden + Termine zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
             "type": "main",
             "index": 0
           }
@@ -472,28 +366,6 @@
     "Loop: Ein Kunde pro Durchlauf": {
       "main": [
         [],
-        [
-          {
-            "node": "IF: Empfaenger-Typ",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion: Kundendaten holen": {
-      "main": [
-        [
-          {
-            "node": "Set: Kundendaten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Set: Kundendaten": {
-      "main": [
         [
           {
             "node": "Confluence: Seite holen",
@@ -507,7 +379,7 @@
       "main": [
         [
           {
-            "node": "Code: Confluence + Termine mergen",
+            "node": "Code: Tabelle aufbauen",
             "type": "main",
             "index": 0
           }
@@ -536,153 +408,27 @@
         ]
       ]
     },
-    "Guard: Konsistenz-Check": {
+    "Code: Gruppen normalisieren": {
       "main": [
         [
           {
-            "node": "IF: Guard-Fehler",
+            "node": "Merge: Kunden + Termine + Gruppen",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF: Guard-Fehler": {
-      "main": [
-        [],
-        [
-          {
-            "node": "Loop: Ein Kunde pro Durchlauf",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF: Empfaenger-Typ": {
-      "main": [
-        [
-          {
-            "node": "Notion: Gruppendaten holen",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Notion: Kundendaten holen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion: Gruppendaten holen": {
-      "main": [
-        [
-          {
-            "node": "Code: Gruppen-Mitglieder auflösen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Gruppen-Mitglieder auflösen": {
-      "main": [
-        [
-          {
-            "node": "IF: Mitglied-Check",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF: Mitglied-Check": {
-      "main": [
-        [
-          {
-            "node": "Notion: Mitglied laden",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Confluence: Space-Homepage holen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion: Mitglied laden": {
-      "main": [
-        [
-          {
-            "node": "Code: ActiveProject filtern",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: ActiveProject filtern": {
-      "main": [
-        [
-          {
-            "node": "Confluence: Seite holen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Confluence: Space-Homepage holen": {
-      "main": [
-        [
-          {
-            "node": "Code: Gruppen-PageId setzen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Gruppen-PageId setzen": {
-      "main": [
-        [
-          {
-            "node": "Confluence: Seite holen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Confluence + Termine mergen": {
-      "main": [
-        [
-          {
-            "node": "Code: Tabelle aufbauen",
-            "type": "main",
-            "index": 0
+            "index": 2
           }
         ]
       ]
     }
   },
-  "active": true,
+  "active": false,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "c4d5e6f7-a8b9-4000-9000-000000000006",
+  "versionId": "5e542df0-b144-4279-9d2e-7833d5bbe8f6",
   "meta": {
-    "templateCredsSetupCompleted": true,
     "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
   },
-  "id": "TermineConfluenceSync01",
+  "id": "Gn5beaHda3c1GQcJ",
   "tags": []
 }
