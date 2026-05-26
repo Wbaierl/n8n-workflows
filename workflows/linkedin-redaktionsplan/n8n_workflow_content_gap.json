@@ -1,0 +1,198 @@
+{
+  "name": "LinkedIn – Content-Gap-Erkennung (wöchentlich)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                3
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "e5000001-0001-0001-0001-000000000001",
+      "name": "Jeden Mittwoch 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Läuft jeden Mittwoch 09:00. Prüft ob geplante Posts ihr Veröffentlichungsdatum überschritten haben."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/35147c76280280e38851fd4736f81c35/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"and\": [\n      { \"property\": \"Status\", \"select\": { \"equals\": \"Geplant\" } },\n      { \"property\": \"Geplant für\", \"date\": { \"before\": \"{{ $now.toISO() }}\" } }\n    ]\n  },\n  \"sorts\": [{ \"property\": \"Geplant für\", \"direction\": \"ascending\" }],\n  \"page_size\": 30\n}",
+        "options": {}
+      },
+      "id": "e5000001-0001-0001-0001-000000000002",
+      "name": "Überfällige Posts laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Lädt alle Posts mit Status=Geplant, bei denen das Datum 'Geplant für' in der Vergangenheit liegt."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-results",
+              "leftValue": "={{ $json.results && $json.results.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5000001-0001-0001-0001-000000000003",
+      "name": "Überfällige Posts gefunden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "notes": "Wenn keine überfälligen Posts → Workflow endet still. Nur bei echtem Handlungsbedarf wird eine E-Mail gesendet."
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.first().json.results || [];\nconst heute = new Date();\nconst heuteDe = heute.toLocaleDateString('de-DE');\n\nconst posts = results.map(page => {\n  const props = page.properties;\n  const titel = props?.['Titel']?.title?.[0]?.plain_text || 'Ohne Titel';\n  const geplantFuer = props?.['Geplant für']?.date?.start || '';\n  const saeule = props?.['Säule']?.select?.name || '-';\n  const linkedin_post = props?.['LinkedIn-Post']?.rich_text?.[0]?.plain_text || '';\n  const hatText = linkedin_post.trim().length > 0;\n\n  let verzoegerungTage = 0;\n  if (geplantFuer) {\n    const geplant = new Date(geplantFuer);\n    verzoegerungTage = Math.floor((heute - geplant) / (1000 * 60 * 60 * 24));\n  }\n\n  return { titel, geplantFuer, saeule, hatText, verzoegerungTage };\n});\n\nconsole.log(`⚠️ Content-Gap: ${posts.length} überfällige Post(s) gefunden`);\n\nconst postListHtml = posts.map(p => {\n  const datum = p.geplantFuer\n    ? new Date(p.geplantFuer).toLocaleDateString('de-DE')\n    : 'kein Datum';\n  const verz = p.verzoegerungTage > 0 ? ` – <strong style=\"color:#c53030\">${p.verzoegerungTage} Tag(e) überfällig</strong>` : '';\n  const textStatus = p.hatText\n    ? '<span style=\"color:#276749\">✓ Text vorhanden</span>'\n    : '<span style=\"color:#c53030\">✗ Kein Text</span>';\n  return `<li><strong>${p.titel}</strong> (${p.saeule})${verz}<br><small>Geplant für: ${datum} · ${textStatus}</small></li>`;\n}).join('');\n\nconst ohnText = posts.filter(p => !p.hatText).length;\nconst mitText = posts.filter(p => p.hatText).length;\n\nreturn [{\n  json: {\n    to: 'wolfgang.baierl@blboardsolutions.de',\n    subject: `[LinkedIn] ${posts.length} überfällige(r) Post(s) – Handlungsbedarf`,\n    body: `<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n<h2 style=\"color:#c53030\">Content-Gap entdeckt – ${posts.length} Post(s) überfällig</h2>\n<p>Folgende Posts haben ihr geplantes Datum überschritten und sind noch nicht veröffentlicht:</p>\n<ul style=\"line-height:2\">${postListHtml}</ul>\n<hr style=\"margin:20px 0\">\n<table style=\"width:100%;border-collapse:collapse;margin-bottom:20px\">\n  <tr><td style=\"padding:6px;background:#f7fafc\">Überfällige Posts gesamt:</td><td style=\"padding:6px;font-weight:bold\">${posts.length}</td></tr>\n  <tr><td style=\"padding:6px;background:#f7fafc\">Davon ohne Text:</td><td style=\"padding:6px;font-weight:bold;color:#c53030\">${ohnText}</td></tr>\n  <tr><td style=\"padding:6px;background:#f7fafc\">Davon mit Text (nur noch posten):</td><td style=\"padding:6px;font-weight:bold;color:#276749\">${mitText}</td></tr>\n</table>\n<p><strong>Empfohlene Maßnahmen:</strong></p>\n<ul>\n  <li>Posts ohne Text: Post-Text-Generator-Workflow ausführen oder manuell verfassen</li>\n  <li>Posts mit Text: Sofort veröffentlichen oder Datum anpassen</li>\n  <li>Alternativ: Status auf <em>Pausiert</em> setzen, wenn der Post nicht mehr aktuell ist</li>\n</ul>\n<p><a href=\"https://www.notion.so/35147c762802803f8311ce87bcce27a5\" style=\"background:#c53030;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\">→ Content Pipeline öffnen</a></p>\n<p style=\"color:#999;font-size:0.8em;margin-top:30px\">Automatisch generiert am ${heuteDe} · n8n LinkedIn-Workflow</p>\n</div>`\n  }\n}];"
+      },
+      "id": "e5000001-0001-0001-0001-000000000004",
+      "name": "E-Mail Inhalt aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ],
+      "notes": "Baut HTML-E-Mail mit Liste aller überfälligen Posts. Zeigt Verzögerung in Tagen und ob Text bereits vorhanden ist."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "toRecipients": "={{ $json.to }}",
+        "bodyContentType": "html",
+        "additionalFields": {}
+      },
+      "id": "e5000001-0001-0001-0001-000000000005",
+      "name": "Content-Gap-Benachrichtigung senden",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "OUTLOOK_CREDENTIAL_ID",
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Sendet via Outlook: Liste der überfälligen Posts mit Handlungsempfehlung."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Jeden Mittwoch 09:00": {
+      "main": [
+        [
+          {
+            "node": "Überfällige Posts laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Überfällige Posts laden": {
+      "main": [
+        [
+          {
+            "node": "Überfällige Posts gefunden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Überfällige Posts gefunden?": {
+      "main": [
+        [
+          {
+            "node": "E-Mail Inhalt aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "E-Mail Inhalt aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Content-Gap-Benachrichtigung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "linkedin-content-gap-v1-0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "linkedin-content-gap-001",
+  "tags": []
+}
