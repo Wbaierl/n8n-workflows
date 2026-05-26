@@ -1,0 +1,198 @@
+{
+  "name": "LinkedIn – Tracking-Erinnerung (wöchentlich)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "c3000001-0001-0001-0001-000000000001",
+      "name": "Jeden Montag 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Läuft jeden Montag 09:00 – eine Stunde nach dem Redaktionsplan-Workflow. Prüft ob Tracking-Daten fehlen."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/35147c76280280e38851fd4736f81c35/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"and\": [\n      { \"property\": \"Status\", \"select\": { \"equals\": \"Veröffentlicht\" } },\n      { \"property\": \"Tracking-Datum\", \"date\": { \"is_empty\": true } }\n    ]\n  },\n  \"sorts\": [{ \"property\": \"Geplant für\", \"direction\": \"descending\" }],\n  \"page_size\": 30\n}",
+        "options": {}
+      },
+      "id": "c3000001-0001-0001-0001-000000000002",
+      "name": "Posts ohne Tracking laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Lädt alle Posts mit Status=Veröffentlicht bei denen das Tracking-Datum leer ist."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-results",
+              "leftValue": "={{ $json.results && $json.results.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3000001-0001-0001-0001-000000000003",
+      "name": "Posts ohne Tracking gefunden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "notes": "Wenn keine Posts ohne Tracking → Workflow endet still. E-Mail nur bei tatsächlichem Handlungsbedarf."
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.first().json.results || [];\nconst monat = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });\nconst heute = new Date().toLocaleDateString('de-DE');\n\nconst posts = results.map(page => {\n  const props = page.properties;\n  const titel = props?.['Titel']?.title?.[0]?.plain_text || 'Ohne Titel';\n  const geplantFuer = props?.['Geplant für']?.date?.start || '';\n  const saeule = props?.['Säule']?.select?.name || '-';\n  return { titel, geplantFuer, saeule };\n});\n\nconsole.log(`📧 Tracking-Erinnerung: ${posts.length} Post(s) ohne Tracking-Daten`);\n\nconst postListHtml = posts.map(p => {\n  const datum = p.geplantFuer\n    ? ' – veröffentlicht am ' + new Date(p.geplantFuer).toLocaleDateString('de-DE')\n    : '';\n  return `<li><strong>${p.titel}</strong>${datum} <span style=\"color:#666;font-size:0.9em\">(${p.saeule})</span></li>`;\n}).join('');\n\nreturn [{\n  json: {\n    to: 'wolfgang.baierl@blboardsolutions.de',\n    subject: `[LinkedIn] ${posts.length} Post(s) ohne Tracking-Daten – ${monat}`,\n    body: `<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n<h2 style=\"color:#2c5282\">Tracking-Erinnerung – ${monat}</h2>\n<p>Bei <strong>${posts.length}</strong> veröffentlichte(n) Post(s) fehlen noch die Tracking-Daten:</p>\n<ul style=\"line-height:1.8\">${postListHtml}</ul>\n<hr style=\"margin:20px 0\">\n<p><strong>Bitte nachtragen in der Content Pipeline:</strong></p>\n<ul>\n  <li>Impressionen</li>\n  <li>Likes &amp; Kommentare</li>\n  <li>Shares</li>\n  <li>Profil-Aufrufe</li>\n  <li>DMs / Leads</li>\n  <li>Neue Kontakte</li>\n  <li>Tracking-Datum (= Auswertungsdatum)</li>\n</ul>\n<p>Die Analyse am letzten Montag im Monat berücksichtigt nur Posts mit vollständigen Tracking-Daten.</p>\n<p><a href=\"https://www.notion.so/35147c762802803f8311ce87bcce27a5\" style=\"background:#2c5282;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\">→ Content Pipeline öffnen</a></p>\n<p style=\"color:#999;font-size:0.8em;margin-top:30px\">Automatisch generiert am ${heute} · n8n LinkedIn-Workflow</p>\n</div>`\n  }\n}];"
+      },
+      "id": "c3000001-0001-0001-0001-000000000004",
+      "name": "E-Mail Inhalt aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ],
+      "notes": "Baut eine strukturierte HTML-E-Mail mit der Liste aller Posts ohne Tracking."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "toRecipients": "={{ $json.to }}",
+        "bodyContentType": "html",
+        "additionalFields": {}
+      },
+      "id": "c3000001-0001-0001-0001-000000000005",
+      "name": "Tracking-Erinnerung senden",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        200
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "OUTLOOK_CREDENTIAL_ID",
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Sendet via Outlook: Liste der Posts ohne Tracking-Daten."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Jeden Montag 09:00": {
+      "main": [
+        [
+          {
+            "node": "Posts ohne Tracking laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posts ohne Tracking laden": {
+      "main": [
+        [
+          {
+            "node": "Posts ohne Tracking gefunden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posts ohne Tracking gefunden?": {
+      "main": [
+        [
+          {
+            "node": "E-Mail Inhalt aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "E-Mail Inhalt aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Tracking-Erinnerung senden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "linkedin-tracking-erinnerung-v1-0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "linkedin-tracking-erinnerung-001",
+  "tags": []
+}

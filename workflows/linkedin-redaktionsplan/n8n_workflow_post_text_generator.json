@@ -1,0 +1,364 @@
+{
+  "name": "LinkedIn – Post-Text Generator (automatisch)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                2
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "d4000001-0001-0001-0001-000000000001",
+      "name": "Jeden Dienstag 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ],
+      "notes": "Läuft jeden Dienstag 09:00. Sucht Posts mit Status=Geplant ohne LinkedIn-Post-Text und generiert diesen automatisch mit Claude."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/35147c76280280e38851fd4736f81c35/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"and\": [\n      { \"property\": \"Status\", \"select\": { \"equals\": \"Geplant\" } },\n      { \"property\": \"LinkedIn-Post\", \"rich_text\": { \"is_empty\": true } }\n    ]\n  },\n  \"sorts\": [{ \"property\": \"Geplant für\", \"direction\": \"ascending\" }],\n  \"page_size\": 10\n}",
+        "options": {}
+      },
+      "id": "d4000001-0001-0001-0001-000000000002",
+      "name": "Geplante Posts ohne Text laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Lädt bis zu 10 Posts mit Status=Geplant und leerem LinkedIn-Post Feld. Sortiert nach Veröffentlichungsdatum (bald zuerst)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-posts",
+              "leftValue": "={{ $json.results && $json.results.length > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d4000001-0001-0001-0001-000000000003",
+      "name": "Posts zum Befüllen vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "notes": "Wenn alle geplanten Posts schon einen Text haben → Workflow endet still."
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.first().json.results || [];\n\nconst posts = results.map(page => {\n  const props = page.properties;\n  const getText = p => p?.rich_text?.[0]?.plain_text || p?.title?.[0]?.plain_text || '';\n  const getSelect = p => p?.select?.name || '';\n  const getDate = p => p?.date?.start || '';\n  const getNum = p => p?.number || 0;\n  return {\n    page_id: page.id,\n    titel: getText(props['Titel']),\n    typ: getText(props['Type']),\n    saeule: getSelect(props['Säule']),\n    geplant_fuer: getDate(props['Geplant für']),\n    kw: getNum(props['KW']),\n    hook: getText(props['Hook']),\n    kern_inhalt: getText(props['Kern-Inhalt']),\n    cta: getText(props['CTA']),\n    hashtags: getText(props['Hashtags'])\n  };\n});\n\nconsole.log(`📝 ${posts.length} Posts ohne LinkedIn-Text gefunden – starte Textgenerierung`);\nposts.forEach((p, i) => console.log(`  ${i+1}. \"${p.titel}\" (${p.geplant_fuer})`));\n\nreturn posts.map(p => ({ json: p }));"
+      },
+      "id": "d4000001-0001-0001-0001-000000000004",
+      "name": "Posts aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ],
+      "notes": "Extrahiert alle benötigten Felder inkl. page_id für das spätere Notion PATCH. Gibt pro Post ein Item zurück."
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "d4000001-0001-0001-0001-000000000005",
+      "name": "Posts einzeln verarbeiten",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1200,
+        200
+      ],
+      "notes": "Verarbeitet Posts nacheinander (1 pro Iteration) um API Rate Limits zu respektieren."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, system: 'Du bist ein erfahrener Berater und Sparringspartner für CEOs von KMU in Deutschland.\\nDu hast 28 Jahre Erfahrung in Automotive, Elektronik und Software.\\nDu moderierst Peer Advisory Boards und kennst die echten Herausforderungen von Unternehmern.\\nDu schreibst sachlich, analytisch, klar und ohne Marketing-Floskeln.\\nNutze den Hook und Kern-Inhalt als Leitplanke, schreibe aber natürlich und authentisch.\\nSchreibe ausschließlich auf Deutsch.\\nVermeide Superlative, Buzzwords und typische KI-Formulierungen.\\nDer Post darf maximal 300 bis 350 Wörter und maximal 1.900 Zeichen lang sein. Wenn du diese Grenzen nicht einhalten kannst, kürze den Inhalt, nicht die Qualität. Halte diese Grenze strikt ein.\\nSchreibe in kurzen Absätzen, max. 3 Zeilen pro Absatz, trenne Absätze mit einer Leerzeile.\\nAntworte AUSSCHLIESSLICH mit einem validen JSON-Objekt mit dem Schlüssel post_text – kein erklärender Text davor oder danach.', messages: [{ role: 'user', content: 'Erstelle einen LinkedIn-Post für Wolfgang Baierl.\\n\\nThema/Titel: ' + $json.titel + '\\nBeitragstyp: ' + ($json.typ || 'nicht angegeben') + '\\nSäule: ' + $json.saeule + '\\nHook (erster Satz, wenn angegeben): ' + ($json.hook || 'bitte passend entwickeln') + '\\nKern-Inhalt und eigene Kernaussagen (zwingend berücksichtigen): ' + ($json.kern_inhalt || 'bitte aus Titel ableiten') + '\\nCTA: ' + ($json.cta || 'bitte passend entwickeln') + '\\nHashtags: ' + ($json.hashtags || '#Mittelstand #Unternehmer') + '\\n\\nAnforderungen:\\n- Zielgruppe: CEOs von KMU in Deutschland\\n- Schreibe analytisch, sachlich und auf Augenhöhe\\n- Keine allgemeinen Floskeln oder KI-typischen Phrasen\\n- Kurze, gut lesbare Absätze (max. 3 Zeilen pro Absatz)\\n- Trenne jeden Absatz mit einer Leerzeile für klare Lesbarkeit\\n- Konkrete Aussagen statt vager Begriffe\\n- Integriere die Kernaussagen sinnvoll in die Argumentation\\n- Entwickle die Gedanken weiter – wiederhole sie nicht einfach\\n- Wenn Kern-Inhalt vorhanden: beginne mit der stärksten Aussage daraus\\n- Wenn ein Hook angegeben: nutze ihn als ersten Satz\\n- Maximale Länge: 300 bis 350 Wörter und maximal 1.900 Zeichen – nicht mehr, nicht weniger\\n\\nTyp-spezifische Logik:\\n\\nWenn Beitragstyp = Persönliche Geschichte ODER Säule = Säule 1 – Persönliche Erlebnisse:\\n→ Erzähle eine konkrete eigene Erfahrung, authentisch und persönlich\\n→ Struktur: Erlebnis/Situation → Was passierte → Erkenntnis → Denkanstoß für den Leser\\n\\nWenn Beitragstyp = Tipp / Mini-Framework ODER Säule = Säule 2 – Tipps & Methoden:\\n→ Liefere einen konkreten, umsetzbaren Denkanstoß\\n→ Struktur: Problem → Analyse → Lösung/Methode → nächster Schritt\\n\\nWenn Beitragstyp = Provokante These:\\n→ Formuliere eine klare, provokante aber sachliche Position\\n→ Struktur: These → Begründung → Konsequenz für den CEO\\n\\nWenn Beitragstyp = Trend-Kommentar ODER Säule = Säule 3 – Trends & Markt:\\n→ Kommentiere einen aktuellen Trend aus Unternehmerperspektive\\n→ Struktur: Beobachtung → Einordnung → Konsequenz → Handlungsempfehlung\\n\\nWenn Beitragstyp = Unternehmerboard-Spotlight:\\n→ Schreibe als anonymisierte Praxiserfahrung aus einem Unternehmerboard\\n→ Struktur: Beobachtung → Diskussion → Erkenntnis → Denkanstoß\\n\\nGib ausschließlich das JSON-Objekt zurück mit dem Schlüssel post_text.' }] }) }}",
+        "options": {}
+      },
+      "id": "d4000001-0001-0001-0001-000000000006",
+      "name": "Claude: Post-Text generieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1440,
+        200
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "iCMaqkiVfMfgXWXJ",
+          "name": "Anthropic account 6"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Claude generiert LinkedIn-Post nach den definierten Guidelines aus LinkedIN Post Claude.json: sachlich-analytischer Stil, max. 300-350 Wörter / 1.900 Zeichen, typ-spezifische Strukturen."
+    },
+    {
+      "parameters": {
+        "jsCode": "const claudeResponse = $input.first().json;\nconst rawText = claudeResponse.content?.[0]?.text || '';\n\nif (!rawText) {\n  const errMsg = claudeResponse.error?.message || JSON.stringify(claudeResponse).substring(0, 200);\n  throw new Error(`Kein Text von Claude: ${errMsg}`);\n}\n\n// page_id aus dem ursprünglichen Batch-Item holen\nconst originalPost = $('Posts einzeln verarbeiten').first().json;\nconst pageId = originalPost.page_id;\nconst titel = originalPost.titel;\n\nlet postText = '';\ntry {\n  const parsed = JSON.parse(rawText);\n  postText = parsed.post_text || '';\n} catch(e) {\n  // JSON-Block aus Markdown extrahieren falls vorhanden\n  const m = rawText.match(/```json\\s*([\\s\\S]*?)\\s*```/);\n  if (m) {\n    try { postText = JSON.parse(m[1]).post_text || ''; } catch(e2) {}\n  }\n  // Letzter Versuch: direkt nach post_text suchen\n  if (!postText) {\n    const m2 = rawText.match(/\"post_text\"\\s*:\\s*\"([\\s\\S]*?)\"\\s*}/);\n    postText = m2 ? m2[1].replace(/\\\\n/g, '\\n').replace(/\\\\t/g, '\\t') : rawText.trim();\n  }\n}\n\nif (!postText || postText.length < 50) {\n  throw new Error(`Post-Text für \"${titel}\" zu kurz oder leer (${postText.length} Zeichen).`);\n}\n\nconsole.log(`✅ Post-Text generiert: \"${titel}\" – ${postText.length} Zeichen | page_id: ${pageId}`);\n\nreturn [{\n  json: {\n    page_id: pageId,\n    titel: titel,\n    post_text: postText\n  }\n}];"
+      },
+      "id": "d4000001-0001-0001-0001-000000000007",
+      "name": "Post-Text parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        200
+      ],
+      "notes": "Parst Claude-Antwort robust (JSON direkt, aus Markdown-Block, oder Fallback). Holt page_id vom SplitInBatches-Node."
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.page_id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "LinkedIn-Post|rich_text",
+              "textContent": "={{ $json.post_text.substring(0, 2000) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d4000001-0001-0001-0001-000000000008",
+      "name": "Notion: LinkedIn-Post aktualisieren",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        200
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Schreibt den generierten Post-Text in das LinkedIn-Post Feld. Nativer Notion-Node, gleiche Credential wie LinkedIN Post Claude Workflow."
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "d4000001-0001-0001-0001-000000000009",
+      "name": "Rate Limit (1s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2160,
+        200
+      ],
+      "webhookId": "rl-wait-postgen-001",
+      "notes": "1 Sekunde Pause zwischen Posts (Notion + Anthropic Rate Limits)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $('Posts aufbereiten').all();\nconst anzahl = items.length;\nconsole.log(`✅ Post-Text-Generator abgeschlossen: ${anzahl} Posts verarbeitet`);\nreturn [{\n  json: {\n    status: 'Abgeschlossen',\n    anzahl_posts: anzahl,\n    zeitstempel: new Date().toISOString(),\n    hinweis: `${anzahl} Posts wurden mit Claude-generiertem Post-Text in der Content Pipeline aktualisiert.`\n  }\n}];"
+      },
+      "id": "d4000001-0001-0001-0001-000000000010",
+      "name": "Abschluss-Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        420
+      ],
+      "notes": "Wird ausgeführt wenn SplitInBatches alle Items verarbeitet hat (output[1] = Done)."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Jeden Dienstag 09:00": {
+      "main": [
+        [
+          {
+            "node": "Geplante Posts ohne Text laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geplante Posts ohne Text laden": {
+      "main": [
+        [
+          {
+            "node": "Posts zum Befüllen vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posts zum Befüllen vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Posts aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Posts aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Posts einzeln verarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posts einzeln verarbeiten": {
+      "main": [
+        [
+          {
+            "node": "Abschluss-Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude: Post-Text generieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Post-Text generieren": {
+      "main": [
+        [
+          {
+            "node": "Post-Text parsen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post-Text parsen": {
+      "main": [
+        [
+          {
+            "node": "Notion: LinkedIn-Post aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: LinkedIn-Post aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit (1s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit (1s)": {
+      "main": [
+        [
+          {
+            "node": "Posts einzeln verarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "linkedin-post-text-generator-v1-0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "linkedin-post-text-generator-001",
+  "tags": []
+}

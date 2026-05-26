@@ -1,0 +1,117 @@
+{
+  "name": "KMU RSS Quellen – Notion Setup (einmalig)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "f1a2b3c4-d5e6-7890-abcd-ef1234567801",
+      "name": "Einmalig Starten",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "notes": "Diesen Workflow nur EINMAL ausführen! Trägt alle 16 Quellen in die bestehende Notion-Datenbank 'Quellen RSS Feeds' ein."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Datenbank-ID der manuell angelegten Notion-DB 'Quellen RSS Feeds'\nconst dbId = '36b47c762802803f8311ce87bcce27a5';\n\nconst quellen = [\n  { name: 'Heise Online IT',                   url: 'https://www.heise.de/rss/heise-atom.xml',                                                                 kategorie: 'Digitalisierung & IT' },\n  { name: 'Markt und Mittelstand',              url: 'https://www.marktundmittelstand.de/rss.xml',                                                              kategorie: 'Mittelstand Allgemein' },\n  { name: 'Handelsblatt Unternehmen',           url: 'https://www.handelsblatt.com/contentexport/feed/unternehmen',                                             kategorie: 'Mittelstand & Strategie' },\n  { name: 'WirtschaftsWoche Unternehmen',       url: 'https://www.wiwo.de/contentexport/feed/rss/unternehmen',                                                  kategorie: 'Mittelstand & Wirtschaft' },\n  { name: 't3n Digital Business',               url: 'https://t3n.de/rss.xml',                                                                                 kategorie: 'Digitalisierung & IT' },\n  { name: 'Impulse Unternehmer-Magazin',        url: 'https://www.impulse.de/feed',                                                                             kategorie: 'Mittelstand & Strategie' },\n  { name: 'Gründerszene',                       url: 'https://www.gruenderszene.de/feed',                                                                       kategorie: 'Startups & Innovation' },\n  { name: 'Deutsche Handwerks Zeitung',         url: 'https://www.deutsche-handwerks-zeitung.de/feed/',                                                        kategorie: 'Handwerk & KMU' },\n  { name: 'FAZ Wirtschaft',                     url: 'https://www.faz.net/rss/aktuell/wirtschaft/',                                                             kategorie: 'Wirtschaftspolitik & Regulierung' },\n  { name: 'Tagesschau Wirtschaft',              url: 'https://www.tagesschau.de/wirtschaft/index~rss2.xml',                                                     kategorie: 'Wirtschaftspolitik & Regulierung' },\n  { name: 'Spiegel Wirtschaft',                 url: 'https://www.spiegel.de/wirtschaft/index.rss',                                                             kategorie: 'Wirtschaft Allgemein' },\n  { name: 'Google News - KMU Mittelstand',      url: 'https://news.google.com/rss/search?q=KMU+Mittelstand+Deutschland&hl=de&gl=DE&ceid=DE:de',                 kategorie: 'Allgemeine KMU-Nachrichten' },\n  { name: 'Google News - Digitalisierung',      url: 'https://news.google.com/rss/search?q=Digitalisierung+Mittelstand&hl=de&gl=DE&ceid=DE:de',                 kategorie: 'Digitalisierung & IT' },\n  { name: 'Google News - Fachkräftemangel',     url: 'https://news.google.com/rss/search?q=Fachkr%C3%A4ftemangel+Mittelstand&hl=de&gl=DE&ceid=DE:de',          kategorie: 'Personal & Fachkräfte' },\n  { name: 'Google News - Maschinenbau Elektro', url: 'https://news.google.com/rss/search?q=Maschinenbau+OR+Elektrotechnik+Mittelstand&hl=de&gl=DE&ceid=DE:de',  kategorie: 'Branchenspezifisch' },\n  { name: 'Google News - Autohandel',           url: 'https://news.google.com/rss/search?q=Autohandel+OR+Kfz-Handel+Deutschland&hl=de&gl=DE&ceid=DE:de',       kategorie: 'Kfz-Handel' }\n];\n\nconsole.log(`📋 ${quellen.length} Quellen werden in Notion eingetragen (DB: ${dbId})`);\nreturn quellen.map(q => ({ json: { ...q, dbId } }));"
+      },
+      "id": "b3c4d5e6-f7a8-9012-cdef-012345678903",
+      "name": "16 Quellen vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300],
+      "notes": "Gibt 16 Items aus (eins pro Quelle). Der folgende HTTP-Node läuft 16x automatisch.\n⚠️ Die Notion-DB muss diese Spalten haben: Name (Title), URL (URL), Kategorie (Select), Aktiv (Checkbox), Notiz (Text)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ parent: { database_id: $json.dbId }, properties: { Name: { title: [{ type: 'text', text: { content: $json.name } }] }, URL: { url: $json.url }, Kategorie: { select: { name: $json.kategorie } }, Aktiv: { checkbox: true }, Notiz: { rich_text: [] } } }) }}",
+        "options": {}
+      },
+      "id": "c4d5e6f7-a8b9-0123-def0-123456789004",
+      "name": "Quelle in Notion eintragen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Erstellt eine Zeile pro Quelle in der Notion-Datenbank. Läuft 16x automatisch."
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst erfolg = items.filter(i => i.json.object === 'page').length;\nconst fehler = items.length - erfolg;\n\nif (fehler > 0) {\n  const fehlerliste = items\n    .filter(i => i.json.object !== 'page')\n    .map(i => i.json.message || JSON.stringify(i.json).substring(0, 100));\n  console.log(`⚠️ ${fehler} Fehler:`, fehlerliste);\n  console.log('Häufige Ursache: Spaltenname in Notion stimmt nicht überein.');\n  console.log('Erwartete Spalten: Name (Title), URL (URL), Kategorie (Select), Aktiv (Checkbox), Notiz (Text)');\n}\n\nconsole.log(`✅ ${erfolg} von ${items.length} Quellen erfolgreich eingetragen`);\n\nreturn [{\n  json: {\n    status: erfolg === items.length ? 'Vollständig erfolgreich' : `${fehler} Fehler aufgetreten`,\n    eingetragen: erfolg,\n    fehler: fehler,\n    notionDbId: '36b47c762802803f8311ce87bcce27a5',\n    naechsterSchritt: fehler > 0\n      ? 'Prüfe die Spaltenbezeichnungen in deiner Notion-Datenbank (siehe Hinweis im Node)'\n      : 'Setup abgeschlossen! Die DB-ID ist bereits im Hauptworkflow eingetragen.'\n  }\n}];"
+      },
+      "id": "d5e6f7a8-b9c0-1234-ef01-234567890005",
+      "name": "Setup-Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300],
+      "notes": "Zeigt Erfolg/Fehler. Bei Spaltenfehlern: Spaltenbezeichnungen in Notion anpassen."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Einmalig Starten": {
+      "main": [
+        [
+          {
+            "node": "16 Quellen vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "16 Quellen vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Quelle in Notion eintragen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quelle in Notion eintragen": {
+      "main": [
+        [
+          {
+            "node": "Setup-Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "notion-setup-v2-0",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "kmu-notion-setup-001",
+  "tags": []
+}

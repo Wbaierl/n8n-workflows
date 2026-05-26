@@ -1,0 +1,798 @@
+{
+  "name": "LinkedIn Redaktionsplan – Monatliche Automatisierung v2",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "b2000001-0001-0001-0001-000000000001",
+      "name": "Jeden Montag 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        400
+      ],
+      "notes": "Läuft jeden Montag 08:00. Verzweigt in Vorbereitung (erster Montag) und Analyse (letzter Montag)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "first-monday",
+              "leftValue": "={{ (() => { const d = new Date(); return d.getDate() <= 7; })() }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000002",
+      "name": "Erster Montag im Monat?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        200
+      ],
+      "notes": "Datum ≤ 7 = erster Montag → Vorbereitung starten"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/35147c76280280e38851fd4736f81c35/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"property\": \"Status\",\n    \"select\": { \"equals\": \"Veröffentlicht\" }\n  },\n  \"sorts\": [{ \"property\": \"Geplant für\", \"direction\": \"descending\" }],\n  \"page_size\": 30\n}",
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000003",
+      "name": "Veröffentlichte Posts laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        200
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Lädt alle veröffentlichten Posts aus Content Pipeline für die Review-Vorbereitung."
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.all()[0].json;\nconst results = input.results || [];\nconst monat = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });\nconst heute = new Date().toLocaleDateString('de-DE');\n\nconst posts = results.map(page => {\n  const props = page.properties;\n  const titel = props?.['Titel']?.title?.[0]?.plain_text || 'Ohne Titel';\n  const typ = props?.['Type']?.rich_text?.[0]?.plain_text || '-';\n  const saeule = props?.['Säule']?.select?.name || '-';\n  const hatTracking = !!props?.['Tracking-Datum']?.date?.start;\n  const geplantFuer = props?.['Geplant für']?.date?.start || '';\n  return { titel, typ, saeule, hatTracking, geplantFuer };\n});\n\nconst ohneTracking = posts.filter(p => !p.hatTracking);\nconst mitTracking = posts.filter(p => p.hatTracking);\n\nconsole.log(`📋 Vorbereitung: ${posts.length} Posts, ${ohneTracking.length} ohne Tracking`);\n\nconst children = [\n  { object: 'block', type: 'divider', divider: {} },\n  {\n    object: 'block', type: 'heading_2',\n    heading_2: { rich_text: [{ text: { content: '📋 Review Vorbereitung – ' + monat } }], color: 'blue_background' }\n  },\n  {\n    object: 'block', type: 'callout',\n    callout: {\n      rich_text: [{ text: { content: ohneTracking.length > 0\n        ? `${ohneTracking.length} Posts benötigen noch Tracking-Daten in der Content Pipeline (Impressionen, Likes, DMs etc.). Bitte vor dem letzten Montag eintragen!`\n        : 'Alle Posts haben Tracking-Daten – bereit für die Monatsanalyse! ✅'\n      }}],\n      icon: { emoji: ohneTracking.length > 0 ? '⚠️' : '✅' },\n      color: ohneTracking.length > 0 ? 'yellow_background' : 'green_background'\n    }\n  },\n  {\n    object: 'block', type: 'heading_3',\n    heading_3: { rich_text: [{ text: { content: `⏳ Tracking noch ausstehend (${ohneTracking.length})` } }] }\n  },\n  ...ohneTracking.map(p => ({\n    object: 'block', type: 'to_do',\n    to_do: {\n      rich_text: [{ text: { content: `${p.titel}  │  ${p.typ}  │  ${p.saeule}${p.geplantFuer ? '  │  ' + p.geplantFuer : ''}` } }],\n      checked: false\n    }\n  })),\n  {\n    object: 'block', type: 'heading_3',\n    heading_3: { rich_text: [{ text: { content: `✅ Tracking vollständig (${mitTracking.length})` } }] }\n  },\n  ...mitTracking.map(p => ({\n    object: 'block', type: 'to_do',\n    to_do: {\n      rich_text: [{ text: { content: `${p.titel}  │  ${p.typ}  │  ${p.saeule}` } }],\n      checked: true\n    }\n  })),\n  {\n    object: 'block', type: 'paragraph',\n    paragraph: {\n      rich_text: [{ text: { content: `Vorbereitung erstellt am ${heute}  ·  Analyse-Workflow läuft automatisch am letzten Montag.` }, annotations: { italic: true, color: 'gray' } }]\n    }\n  }\n];\n\nreturn [{ json: { children } }];"
+      },
+      "id": "b2000001-0001-0001-0001-000000000004",
+      "name": "Vorbereitung: Review-Blocks aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        200
+      ],
+      "notes": "Baut eine Checkliste der Posts für die Review-Seite. Zeigt welche Posts noch Tracking-Daten brauchen."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/blocks/36c47c76280281ea8250d38647dd35cc/children",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ children: $json.children }) }}",
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000005",
+      "name": "Review-Seite: Vorbereitung schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1200,
+        200
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "notes": "Schreibt die Vorbereitung-Checkliste in die Notion Review-Seite."
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $('Veröffentlichte Posts laden').first().json.results || [];\nconst ohneTracking = results.filter(p => !p.properties?.['Tracking-Datum']?.date?.start);\nconst monat = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });\nconst heute = new Date().toLocaleDateString('de-DE');\n\nconsole.log(`📧 Sende Vorbereitung-Benachrichtigung: ${results.length} Posts, ${ohneTracking.length} ohne Tracking`);\n\nreturn [{\n  json: {\n    to: 'wolfgang.baierl@blboardsolutions.de',\n    subject: `[LinkedIn] Review-Vorbereitung ${monat} bereit`,\n    body: `<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n<h2 style=\"color:#2c5282\">Monatliche LinkedIn-Review-Vorbereitung – ${monat}</h2>\n<p>Die Checkliste in deiner Notion Review-Seite wurde aktualisiert.</p>\n<table style=\"border-collapse:collapse;width:100%;margin:16px 0\">\n  <tr style=\"background:#ebf4ff\">\n    <td style=\"padding:12px;border:1px solid #bee3f8\"><strong>Posts veröffentlicht</strong></td>\n    <td style=\"padding:12px;border:1px solid #bee3f8;font-size:1.2em\">${results.length}</td>\n  </tr>\n  <tr style=\"background:${ohneTracking.length > 0 ? '#fffbeb' : '#f0fff4'}\">\n    <td style=\"padding:12px;border:1px solid ${ohneTracking.length > 0 ? '#fbd38d' : '#9ae6b4'}\"><strong>Ohne Tracking-Daten</strong></td>\n    <td style=\"padding:12px;border:1px solid ${ohneTracking.length > 0 ? '#fbd38d' : '#9ae6b4'};font-size:1.2em;color:${ohneTracking.length > 0 ? '#c05621' : '#276749'}\">${ohneTracking.length === 0 ? '✅ 0' : '⚠️ ' + ohneTracking.length}</td>\n  </tr>\n</table>\n${ohneTracking.length > 0\n  ? '<p>Bitte <strong>Tracking-Daten</strong> (Impressionen, Likes, Kommentare, DMs/Leads) bis zum letzten Montag in der Content Pipeline eintragen.</p>'\n  : '<p style=\"color:#276749\">Alle Tracking-Daten sind vollständig – bereit für die automatische Analyse am letzten Montag!</p>'\n}\n<p><a href=\"https://www.notion.so/Monatliche-LinkedIn-Review-Vorlage-36c47c76280281ea8250d38647dd35cc\" style=\"background:#2c5282;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\">→ Zur Review-Seite in Notion</a></p>\n<p style=\"color:#999;font-size:0.8em;margin-top:24px\">Erstellt am ${heute} · n8n LinkedIn-Workflow</p>\n</div>`\n  }\n}];"
+      },
+      "id": "b2000001-0001-0001-0001-000000000019",
+      "name": "Benachrichtigung: Vorbereitung aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        200
+      ],
+      "notes": "Erstellt den HTML-Inhalt der Benachrichtigungs-E-Mail nach Vorbereitung."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "toRecipients": "={{ $json.to }}",
+        "bodyContentType": "html",
+        "additionalFields": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000020",
+      "name": "E-Mail: Vorbereitung bereit",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        200
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "OUTLOOK_CREDENTIAL_ID",
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Sendet via Outlook: Vorbereitung fertig, Tracking-Status."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "last-monday",
+              "leftValue": "={{ (() => { const n = new Date(); const nm = new Date(n); nm.setDate(n.getDate() + 7); return nm.getMonth() !== n.getMonth(); })() }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000006",
+      "name": "Letzter Montag im Monat?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        600
+      ],
+      "notes": "Nächster Montag liegt im Folgemonat → heute ist der letzte Montag"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dry-run",
+              "name": "DRY_RUN",
+              "value": false,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000007",
+      "name": "Konfiguration (DRY_RUN)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        600
+      ],
+      "notes": "DRY_RUN = true: nur loggen, kein Schreiben nach Notion\nDRY_RUN = false: normaler Betrieb"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/35147c76280280e38851fd4736f81c35/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"and\": [\n      { \"property\": \"Status\", \"select\": { \"equals\": \"Veröffentlicht\" } },\n      { \"property\": \"Tracking-Datum\", \"date\": { \"is_not_empty\": true } }\n    ]\n  },\n  \"sorts\": [{ \"property\": \"Geplant für\", \"direction\": \"descending\" }],\n  \"page_size\": 30\n}",
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000008",
+      "name": "Notion: Posts mit Tracking laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        600
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $input.all()[0].json?.results;\n\nif (!results || results.length === 0) {\n  console.log('⚠️ Keine Posts mit Tracking-Daten – Claude erstellt generischen Startplan.');\n  return [{ json: { posts: [], stats: { gesamt_posts: 0, avg_impressionen: 0, avg_kommentare: 0, avg_likes: 0, gesamt_leads: 0, top_post_impressionen: '', top_post_leads: '' }, nach_saeule: {}, nach_typ: {} } }];\n}\n\nconst posts = results.map(page => {\n  const props = page.properties;\n  const getText = p => p?.rich_text?.[0]?.plain_text || p?.title?.[0]?.plain_text || '';\n  const getSelect = p => p?.select?.name || '';\n  const getNum = p => p?.number || 0;\n  const getDate = p => p?.date?.start || '';\n  return {\n    titel: getText(props['Titel']),\n    typ: getText(props['Type']),\n    saeule: getSelect(props['Säule']),\n    geplant_fuer: getDate(props['Geplant für']),\n    kw: getNum(props['KW']),\n    hook: getText(props['Hook']),\n    impressionen: getNum(props['Impressionen']),\n    likes: getNum(props['Likes']),\n    kommentare: getNum(props['Kommentare']),\n    shares: getNum(props['Shares']),\n    profil_aufrufe: getNum(props['Profil-Aufrufe']),\n    dms_leads: getNum(props['DMs / Leads']),\n    neue_kontakte: getNum(props['Neue Kontakte']),\n    tracking_datum: getDate(props['Tracking-Datum'])\n  };\n});\n\nconst avg = (arr, key) => posts.length ? Math.round(arr.reduce((s, p) => s + p[key], 0) / arr.length) : 0;\nconst stats = {\n  gesamt_posts: posts.length,\n  avg_impressionen: avg(posts, 'impressionen'),\n  avg_kommentare: avg(posts, 'kommentare'),\n  avg_likes: avg(posts, 'likes'),\n  gesamt_leads: posts.reduce((s, p) => s + p.dms_leads, 0),\n  top_post_impressionen: [...posts].sort((a,b) => b.impressionen - a.impressionen)[0]?.titel || '',\n  top_post_leads: [...posts].sort((a,b) => b.dms_leads - a.dms_leads)[0]?.titel || ''\n};\n\nconst groupBy = (key, metricKey) => {\n  const g = {};\n  posts.forEach(p => {\n    if (!g[p[key]]) g[p[key]] = { posts: 0, impressionen: 0, kommentare: 0, leads: 0 };\n    g[p[key]].posts++;\n    g[p[key]].impressionen += p.impressionen;\n    g[p[key]].kommentare += p.kommentare;\n    g[p[key]].leads += p.dms_leads;\n  });\n  return g;\n};\n\nconsole.log(`📊 ${posts.length} Posts mit Tracking für Analyse geladen`);\nreturn [{ json: { posts, stats, nach_saeule: groupBy('saeule'), nach_typ: groupBy('typ') } }];"
+      },
+      "id": "b2000001-0001-0001-0001-000000000009",
+      "name": "Daten aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 4000, system: 'Du bist der LinkedIn-Content-Stratege von Wolfgang Baierl (BL Board Solutions). Antworte AUSSCHLIESSLICH mit einem validen JSON-Objekt – kein Text, keine Markdown-Blöcke davor oder danach.', messages: [{ role: 'user', content: 'Analysiere die LinkedIn-Performance und erstelle einen optimierten Redaktionsplan für den nächsten Monat.\\n\\n## Kontext Wolfgang Baierl\\n- Positionierung: Erfahrener Unternehmer auf Augenhöhe, 25+ Jahre Industrie\\n- Angebot: Unternehmerboard für CEOs/Inhaber in KMU (20–200 MA)\\n- Zielgruppe: GF & Inhaber KMU D-A-CH, Maschinenbau/Fertigung/Elektronik/Software\\n- Ton: Persönlich, authentisch, auf Augenhöhe – nie belehrend\\n\\n## Content-Säulen (Zielgewichtung)\\n- Säule 1 – Persönliche Erlebnisse: ~40%\\n- Säule 2 – Tipps & Methoden: ~35%\\n- Säule 3 – Trends & Markt: ~25%\\n- Unternehmerboard-Spotlight: max. 1 von 3 Posts\\n\\n## Performance-Daten\\n' + JSON.stringify($json.posts, null, 2) + '\\n\\n## Statistiken\\n' + JSON.stringify($json.stats, null, 2) + '\\n\\n## Nach Säule\\n' + JSON.stringify($json.nach_saeule, null, 2) + '\\n\\n## Nach Post-Typ\\n' + JSON.stringify($json.nach_typ, null, 2) + '\\n\\nErstelle genau 10 Posts (Mo/Mi/Fr-Rhythmus, ab nächstem Montag). Für jeden Post auch einen ImagePrompt (Bildbeschreibung für KI-Bildgenerierung).\\n\\nAntworte NUR mit diesem JSON:\\n{\"analyse\":{\"top_erkenntnisse\":[\"...\"],\"beste_saeule\":\"...\",\"bester_typ\":\"...\",\"empfehlung_saeule_gewichtung\":{\"Säule 1 – Persönliche Erlebnisse\":40,\"Säule 2 – Tipps & Methoden\":35,\"Säule 3 – Trends & Markt\":25}},\"redaktionsplan\":[{\"titel\":\"...\",\"typ\":\"Persönliche Geschichte\",\"saeule\":\"Säule 1 – Persönliche Erlebnisse\",\"kw\":27,\"geplant_fuer\":\"2026-07-07\",\"hook\":\"...\",\"kern_inhalt\":\"...\",\"cta\":\"...\",\"hashtags\":\"#Mittelstand #Führung\",\"board_erwaehnung\":false,\"image_prompt\":\"...\",\"quelle\":\"KI-generiert auf Basis Performance-Analyse\"}]}' }] }) }}",
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000010",
+      "name": "Claude: Analyse & Redaktionsplan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1440,
+        600
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "iCMaqkiVfMfgXWXJ",
+          "name": "Anthropic account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $input.all()[0].json.content?.[0]?.text || '';\nif (!rawText) throw new Error('Keine Antwort von Claude.');\n\nlet parsed;\ntry { parsed = JSON.parse(rawText); }\ncatch(e) {\n  const m = rawText.match(/```json\\s*([\\s\\S]*?)\\s*```/);\n  if (m) { parsed = JSON.parse(m[1]); }\n  else {\n    const s = rawText.indexOf('{'), e2 = rawText.lastIndexOf('}');\n    if (s < 0) throw new Error('Kein JSON in Claude-Antwort.');\n    parsed = JSON.parse(rawText.slice(s, e2 + 1));\n  }\n}\n\nif (!parsed.redaktionsplan?.length) throw new Error('Claude hat kein redaktionsplan-Array zurückgegeben.');\n\nconst dryRun = $('Konfiguration (DRY_RUN)').first().json.DRY_RUN;\nconsole.log(`✅ ${parsed.redaktionsplan.length} Posts geplant | DRY_RUN=${dryRun}`);\n\nreturn parsed.redaktionsplan.map(post => ({ json: { ...post, DRY_RUN: dryRun } }));"
+      },
+      "id": "b2000001-0001-0001-0001-000000000011",
+      "name": "Claude Response parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000012",
+      "name": "Posts einzeln verarbeiten",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1920,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "dryrun-cond",
+              "leftValue": "={{ $json.DRY_RUN }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000013",
+      "name": "DRY_RUN aktiv?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $input.first().json;\nconsole.log(`[DRY RUN] \"${p.titel}\" | ${p.geplant_fuer} | ${p.saeule}`);\nreturn [{ json: { ...p, status: 'dry_run' } }];"
+      },
+      "id": "b2000001-0001-0001-0001-000000000014",
+      "name": "DRY RUN: Post loggen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ parent: { database_id: '35147c76280280e38851fd4736f81c35' }, properties: { Titel: { title: [{ text: { content: $json.titel } }] }, Type: { rich_text: [{ text: { content: $json.typ || '' } }] }, 'Säule': { select: { name: $json.saeule } }, Status: { select: { name: 'Geplant' } }, KW: { number: $json.kw || 0 }, 'Geplant für': { date: { start: $json.geplant_fuer } }, Hook: { rich_text: [{ text: { content: $json.hook || '' } }] }, 'Kern-Inhalt': { rich_text: [{ text: { content: $json.kern_inhalt || '' } }] }, CTA: { rich_text: [{ text: { content: $json.cta || '' } }] }, Hashtags: { rich_text: [{ text: { content: $json.hashtags || '' } }] }, 'Board-Erwähnung': { checkbox: $json.board_erwaehnung || false }, ImagePrompt: { rich_text: [{ text: { content: $json.image_prompt || '' } }] }, Quelle: { rich_text: [{ text: { content: $json.quelle || 'KI-generiert' } }] } } }) }}",
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000015",
+      "name": "Notion: Post anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2400,
+        740
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 1
+      },
+      "id": "b2000001-0001-0001-0001-000000000016",
+      "name": "Rate Limit (1s)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2640,
+        600
+      ],
+      "webhookId": "rl-wait-linkedin-002"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Baut die Analyse + Redaktionsplan als strukturierte Notion-Blocks auf\nconst claudeResponse = $('Claude: Analyse & Redaktionsplan').first().json.content?.[0]?.text || '{}';\nconst heute = new Date().toLocaleDateString('de-DE');\nconst monat = new Date().toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });\nconst dryRun = $('Konfiguration (DRY_RUN)').first().json.DRY_RUN || false;\n\nlet analyse = {}, redaktionsplan = [];\ntry {\n  const s = claudeResponse.indexOf('{'), e = claudeResponse.lastIndexOf('}');\n  const parsed = JSON.parse(claudeResponse.slice(s, e + 1));\n  analyse = parsed.analyse || {};\n  redaktionsplan = parsed.redaktionsplan || [];\n} catch(e) { console.log('Parse-Fehler:', e.message); }\n\nconst stats = $('Daten aufbereiten').first().json.stats || {};\n\nconst postBlocks = redaktionsplan.map((post, i) => ({\n  object: 'block', type: 'toggle',\n  toggle: {\n    rich_text: [{ text: { content: `${i+1}. ${post.geplant_fuer}  │  KW${post.kw}  │  ${post.titel}` }, annotations: { bold: true } }],\n    children: [\n      { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ text: { content: `📂 ${post.saeule}  ·  ${post.typ}` }, annotations: { color: 'gray' } }] } },\n      { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ text: { content: '🎯 Hook: ', annotations: { bold: true } }, type: 'text' }, { text: { content: post.hook || '' }, type: 'text' }] } },\n      { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ text: { content: '📝 Inhalt: ', annotations: { bold: true } }, type: 'text' }, { text: { content: post.kern_inhalt || '' }, type: 'text' }] } },\n      { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ text: { content: '👉 CTA: ', annotations: { bold: true } }, type: 'text' }, { text: { content: post.cta || '' }, type: 'text' }] } },\n      { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ text: { content: `🏷️ ${post.hashtags || ''}  ·  🖼️ ${post.image_prompt || ''}` }, annotations: { color: 'gray' } }] } }\n    ]\n  }\n}));\n\nconst children = [\n  { object: 'block', type: 'divider', divider: {} },\n  {\n    object: 'block', type: 'heading_2',\n    heading_2: {\n      rich_text: [{ text: { content: `📊 Analyse & Redaktionsplan – ${monat}${dryRun ? ' [DRY RUN]' : ''}` } }],\n      color: 'green_background'\n    }\n  },\n  {\n    object: 'block', type: 'callout',\n    callout: {\n      rich_text: [{ text: { content: `${stats.gesamt_posts || 0} Posts analysiert  ·  ∅ ${stats.avg_impressionen || 0} Impressionen  ·  ∅ ${stats.avg_likes || 0} Likes  ·  ${stats.gesamt_leads || 0} Leads gesamt` } }],\n      icon: { emoji: '📈' }, color: 'blue_background'\n    }\n  },\n  { object: 'block', type: 'heading_3', heading_3: { rich_text: [{ text: { content: '🔍 Top-Erkenntnisse' } }] } },\n  ...(analyse.top_erkenntnisse || ['Keine Daten vorhanden']).map(e => ({\n    object: 'block', type: 'bulleted_list_item',\n    bulleted_list_item: { rich_text: [{ text: { content: e } }] }\n  })),\n  {\n    object: 'block', type: 'paragraph',\n    paragraph: { rich_text: [\n      { text: { content: 'Beste Säule: ' }, annotations: { bold: true } },\n      { text: { content: (analyse.beste_saeule || '-') + '   ' } },\n      { text: { content: 'Bester Post-Typ: ' }, annotations: { bold: true } },\n      { text: { content: analyse.bester_typ || '-' } }\n    ]}\n  },\n  { object: 'block', type: 'heading_3', heading_3: { rich_text: [{ text: { content: `📅 Neuer Redaktionsplan (${redaktionsplan.length} Posts)` } }] } },\n  ...postBlocks,\n  {\n    object: 'block', type: 'paragraph',\n    paragraph: {\n      rich_text: [{ text: { content: `Generiert am ${heute}${dryRun ? ' – DRY RUN (Posts nicht in Notion angelegt)' : ' – Posts als „Geplant\" in Content Pipeline angelegt.'}` }, annotations: { italic: true, color: 'gray' } }]\n    }\n  }\n];\n\nreturn [{ json: { children } }];"
+      },
+      "id": "b2000001-0001-0001-0001-000000000017",
+      "name": "Review-Ausgabe aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        600
+      ],
+      "notes": "Baut den vollständigen Analyse + Redaktionsplan als Notion-Blocks auf (mit Toggle-Details pro Post)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/blocks/36c47c76280281ea8250d38647dd35cc/children",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ children: $json.children }) }}",
+        "options": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000018",
+      "name": "Review-Seite: Analyse + Plan schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3120,
+        600
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NOTION_CREDENTIAL_ID",
+          "name": "Notion account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Schreibt Analyse-Ergebnis + Redaktionsplan in die Notion Review-Seite."
+    },
+    {
+      "parameters": {
+        "jsCode": "const stats = $('Daten aufbereiten').first().json.stats || {};\nconst dryRun = $('Konfiguration (DRY_RUN)').first().json.DRY_RUN;\nconst jetzt = new Date();\nconst aktuellerMonat = jetzt.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });\nconst naechsterMonat = new Date(jetzt.getFullYear(), jetzt.getMonth() + 1, 1)\n  .toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });\nconst heute = jetzt.toLocaleDateString('de-DE');\n\nconsole.log(`📧 Sende Analyse-Benachrichtigung: ${stats.gesamt_posts || 0} Posts analysiert, DRY_RUN=${dryRun}`);\n\nreturn [{\n  json: {\n    to: 'wolfgang.baierl@blboardsolutions.de',\n    subject: `[LinkedIn] Redaktionsplan ${naechsterMonat} generiert${dryRun ? ' [DRY RUN]' : ''}`,\n    body: `<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n<h2 style=\"color:#276749\">LinkedIn-Redaktionsplan ${naechsterMonat} ist fertig</h2>\n${dryRun ? '<div style=\"background:#fffbeb;border:1px solid #f6e05e;padding:12px;border-radius:4px;margin-bottom:16px\"><strong>⚠️ DRY RUN:</strong> Posts wurden NICHT in Notion angelegt.</div>' : ''}\n<h3 style=\"color:#2d3748\">Analyse ${aktuellerMonat}</h3>\n<table style=\"border-collapse:collapse;width:100%;margin:12px 0\">\n  <tr style=\"background:#f0fff4\">\n    <td style=\"padding:10px;border:1px solid #9ae6b4\"><strong>Posts analysiert</strong></td>\n    <td style=\"padding:10px;border:1px solid #9ae6b4;font-size:1.1em\">${stats.gesamt_posts || 0}</td>\n  </tr>\n  <tr>\n    <td style=\"padding:10px;border:1px solid #e2e8f0\">Ø Impressionen</td>\n    <td style=\"padding:10px;border:1px solid #e2e8f0\">${stats.avg_impressionen || 0}</td>\n  </tr>\n  <tr style=\"background:#f7fafc\">\n    <td style=\"padding:10px;border:1px solid #e2e8f0\">Ø Likes</td>\n    <td style=\"padding:10px;border:1px solid #e2e8f0\">${stats.avg_likes || 0}</td>\n  </tr>\n  <tr>\n    <td style=\"padding:10px;border:1px solid #e2e8f0\">Ø Kommentare</td>\n    <td style=\"padding:10px;border:1px solid #e2e8f0\">${stats.avg_kommentare || 0}</td>\n  </tr>\n  <tr style=\"background:#f7fafc\">\n    <td style=\"padding:10px;border:1px solid #e2e8f0\"><strong>DMs / Leads gesamt</strong></td>\n    <td style=\"padding:10px;border:1px solid #e2e8f0\"><strong>${stats.gesamt_leads || 0}</strong></td>\n  </tr>\n  ${stats.top_post_impressionen ? `<tr><td style=\"padding:10px;border:1px solid #e2e8f0\">Top-Post (Impressionen)</td><td style=\"padding:10px;border:1px solid #e2e8f0;font-style:italic\">${stats.top_post_impressionen}</td></tr>` : ''}\n</table>\n<p>10 neue Posts wurden ${dryRun ? '<strong>NICHT</strong> ' : ''}als „Geplant\" in der Content Pipeline angelegt.</p>\n<p><a href=\"https://www.notion.so/Monatliche-LinkedIn-Review-Vorlage-36c47c76280281ea8250d38647dd35cc\" style=\"background:#276749;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\">→ Zur Review-Seite in Notion</a>&nbsp;&nbsp;\n<a href=\"https://www.notion.so/35147c762802803f8311ce87bcce27a5\" style=\"background:#2c5282;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\">→ Content Pipeline öffnen</a></p>\n<p style=\"color:#999;font-size:0.8em;margin-top:24px\">Generiert am ${heute} · n8n LinkedIn-Workflow</p>\n</div>`\n  }\n}];"
+      },
+      "id": "b2000001-0001-0001-0001-000000000021",
+      "name": "Benachrichtigung: Analyse aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        600
+      ],
+      "notes": "Erstellt die Zusammenfassungs-E-Mail mit Analyse-Statistiken und Link zum neuen Redaktionsplan."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.body }}",
+        "toRecipients": "={{ $json.to }}",
+        "bodyContentType": "html",
+        "additionalFields": {}
+      },
+      "id": "b2000001-0001-0001-0001-000000000022",
+      "name": "E-Mail: Redaktionsplan fertig",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        600
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "OUTLOOK_CREDENTIAL_ID",
+          "name": "Microsoft Outlook account"
+        }
+      },
+      "continueOnFail": true,
+      "notes": "Sendet via Outlook: Analyse-Zusammenfassung + Link zum neuen Redaktionsplan."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Jeden Montag 08:00": {
+      "main": [
+        [
+          {
+            "node": "Erster Montag im Monat?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Letzter Montag im Monat?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erster Montag im Monat?": {
+      "main": [
+        [
+          {
+            "node": "Veröffentlichte Posts laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Veröffentlichte Posts laden": {
+      "main": [
+        [
+          {
+            "node": "Vorbereitung: Review-Blocks aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vorbereitung: Review-Blocks aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Review-Seite: Vorbereitung schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review-Seite: Vorbereitung schreiben": {
+      "main": [
+        [
+          {
+            "node": "Benachrichtigung: Vorbereitung aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Benachrichtigung: Vorbereitung aufbauen": {
+      "main": [
+        [
+          {
+            "node": "E-Mail: Vorbereitung bereit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Letzter Montag im Monat?": {
+      "main": [
+        [
+          {
+            "node": "Konfiguration (DRY_RUN)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Konfiguration (DRY_RUN)": {
+      "main": [
+        [
+          {
+            "node": "Notion: Posts mit Tracking laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Posts mit Tracking laden": {
+      "main": [
+        [
+          {
+            "node": "Daten aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daten aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "Claude: Analyse & Redaktionsplan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Analyse & Redaktionsplan": {
+      "main": [
+        [
+          {
+            "node": "Claude Response parsen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Response parsen": {
+      "main": [
+        [
+          {
+            "node": "Posts einzeln verarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Posts einzeln verarbeiten": {
+      "main": [
+        [
+          {
+            "node": "Review-Ausgabe aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "DRY_RUN aktiv?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DRY_RUN aktiv?": {
+      "main": [
+        [
+          {
+            "node": "DRY RUN: Post loggen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Post anlegen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DRY RUN: Post loggen": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit (1s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Post anlegen": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit (1s)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit (1s)": {
+      "main": [
+        [
+          {
+            "node": "Posts einzeln verarbeiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review-Ausgabe aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Review-Seite: Analyse + Plan schreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review-Seite: Analyse + Plan schreiben": {
+      "main": [
+        [
+          {
+            "node": "Benachrichtigung: Analyse aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Benachrichtigung: Analyse aufbauen": {
+      "main": [
+        [
+          {
+            "node": "E-Mail: Redaktionsplan fertig",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "linkedin-redaktionsplan-v2-1",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "linkedin-redaktionsplan-002",
+  "tags": []
+}
