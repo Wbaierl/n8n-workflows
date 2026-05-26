@@ -165,8 +165,9 @@
         "subject": "={{ $json.subject }}",
         "bodyContent": "={{ $json.body }}",
         "toRecipients": "={{ $json.to }}",
-        "bodyContentType": "html",
-        "additionalFields": {}
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
       },
       "id": "b2000001-0001-0001-0001-000000000020",
       "name": "E-Mail: Vorbereitung bereit",
@@ -519,8 +520,9 @@
         "subject": "={{ $json.subject }}",
         "bodyContent": "={{ $json.body }}",
         "toRecipients": "={{ $json.to }}",
-        "bodyContentType": "html",
-        "additionalFields": {}
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
       },
       "id": "b2000001-0001-0001-0001-000000000022",
       "name": "E-Mail: Redaktionsplan fertig",

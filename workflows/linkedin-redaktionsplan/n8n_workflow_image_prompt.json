@@ -291,8 +291,9 @@
         "subject": "={{ $json.subject }}",
         "bodyContent": "={{ $json.body }}",
         "toRecipients": "={{ $json.to }}",
-        "bodyContentType": "html",
-        "additionalFields": {}
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
       },
       "id": "f6000001-0001-0001-0001-000000000012",
       "name": "Zusammenfassung senden",

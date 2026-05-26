@@ -115,8 +115,9 @@
         "subject": "={{ $json.subject }}",
         "bodyContent": "={{ $json.body }}",
         "toRecipients": "={{ $json.to }}",
-        "bodyContentType": "html",
-        "additionalFields": {}
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
       },
       "id": "e5000001-0001-0001-0001-000000000005",
       "name": "Content-Gap-Benachrichtigung senden",
