@@ -1,5 +1,5 @@
 {
-  "name": "LinkedIn – Image-Prompt Optimierung (wöchentlich)",
+  "name": "LinkedIn – Image-Prompt Generierung v2 (wöchentlich)",
   "nodes": [
     {
       "parameters": {
@@ -23,7 +23,7 @@
         240,
         300
       ],
-      "notes": "Läuft jeden Donnerstag 09:00. Optimiert rohe Bildideen zu vollständigen DALL-E 3 Prompts."
+      "notes": "Läuft jeden Donnerstag 09:00. Generiert Bildprompts für alle Posts mit Checkbox 'ImagePrompt generieren' = aktiv."
     },
     {
       "parameters": {
@@ -42,11 +42,11 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{\n  \"filter\": {\n    \"and\": [\n      { \"property\": \"Status\", \"select\": { \"equals\": \"Geplant\" } },\n      { \"property\": \"ImagePrompt\", \"rich_text\": { \"is_not_empty\": true } }\n    ]\n  },\n  \"sorts\": [{ \"property\": \"Geplant für\", \"direction\": \"ascending\" }],\n  \"page_size\": 20\n}",
+        "jsonBody": "{\"filter\": {\"and\": [{\"property\": \"Status\", \"select\": {\"equals\": \"Geplant\"}}, {\"property\": \"ImagePrompt generieren\", \"checkbox\": {\"equals\": true}}]}, \"sorts\": [{\"property\": \"Geplant für\", \"direction\": \"ascending\"}], \"page_size\": 20}",
         "options": {}
       },
       "id": "f6000001-0001-0001-0001-000000000002",
-      "name": "Posts mit ImagePrompt laden",
+      "name": "Posts mit Flag laden",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -59,7 +59,7 @@
           "name": "Notion account"
         }
       },
-      "notes": "Lädt Posts mit Status=Geplant, die einen rohen ImagePrompt haben."
+      "notes": "Lädt alle Posts mit Status=Geplant und Checkbox 'ImagePrompt generieren' = aktiv."
     },
     {
       "parameters": {
@@ -85,18 +85,18 @@
         "options": {}
       },
       "id": "f6000001-0001-0001-0001-000000000003",
-      "name": "Posts mit Prompt gefunden?",
+      "name": "Posts mit Flag gefunden?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
         720,
         300
       ],
-      "notes": "Wenn keine Posts mit offenem ImagePrompt → Workflow endet still."
+      "notes": "Wenn keine Posts mit gesetzter Checkbox → Workflow endet still."
     },
     {
       "parameters": {
-        "jsCode": "const results = $input.first().json.results || [];\n\nconst posts = results.map(page => {\n  const props = page.properties;\n  const titel = props?.['Titel']?.title?.[0]?.plain_text || 'Ohne Titel';\n  const image_prompt = props?.['ImagePrompt']?.rich_text?.[0]?.plain_text || '';\n  const saeule = props?.['Säule']?.select?.name || '-';\n  const post_typ = props?.['Post-Typ']?.select?.name || '';\n  const linkedin_post = props?.['LinkedIn-Post']?.rich_text?.[0]?.plain_text || '';\n  const geplantFuer = props?.['Geplant für']?.date?.start || '';\n\n  return {\n    json: {\n      page_id: page.id,\n      titel,\n      image_prompt,\n      saeule,\n      post_typ,\n      linkedin_post: linkedin_post.substring(0, 500),\n      geplantFuer\n    }\n  };\n});\n\nconsole.log(`🎨 ${posts.length} Posts mit offenem ImagePrompt gefunden`);\nreturn posts;"
+        "jsCode": "const results = $input.first().json.results || [];\nconst posts = [];\nconst skipped = [];\n\nresults.forEach(page => {\n  const props = page.properties;\n  const titel = props?.['Titel']?.title?.[0]?.plain_text || 'Ohne Titel';\n  const linkedin_post = props?.['LinkedIn-Post']?.rich_text?.[0]?.plain_text || '';\n  const hook = props?.['Hook']?.rich_text?.[0]?.plain_text || '';\n  const saeule = props?.['Säule']?.select?.name || '-';\n  const post_typ = props?.['Type']?.rich_text?.[0]?.plain_text || '';\n\n  if (!linkedin_post.trim()) {\n    skipped.push(titel);\n    return;\n  }\n\n  posts.push({\n    json: { page_id: page.id, titel, linkedin_post, hook, saeule, post_typ }\n  });\n});\n\nif (skipped.length > 0) {\n  console.log(`Übersprungen (kein LinkedIn-Post): ${skipped.join(', ')}`);\n}\nconsole.log(`${posts.length} Posts zur Bild-Prompt-Generierung vorbereitet`);\nreturn posts;"
       },
       "id": "f6000001-0001-0001-0001-000000000004",
       "name": "Posts aufbereiten",
@@ -106,7 +106,7 @@
         960,
         200
       ],
-      "notes": "Extrahiert relevante Felder aus den Notion-Seiten für die Claude-Verarbeitung."
+      "notes": "Filtert Posts ohne LinkedIn-Post-Text still heraus. Gibt nur verarbeitbare Posts weiter."
     },
     {
       "parameters": {
@@ -121,7 +121,7 @@
         1200,
         200
       ],
-      "notes": "Verarbeitet Posts einzeln, um API-Rate-Limits zu respektieren."
+      "notes": "Verarbeitet jeden Post einzeln (Rate Limit)."
     },
     {
       "parameters": {
@@ -140,11 +140,11 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-opus-4-5',\n  max_tokens: 600,\n  system: 'Du bist ein Experte für KI-Bildgenerierung, speziell für DALL-E 3. Du erstellst präzise, effektive Prompts auf Englisch für professionelle LinkedIn-Grafiken. Deine Prompts sind konkret, beschreibend und auf Business-Kontext optimiert.',\n  messages: [\n    {\n      role: 'user',\n      content: 'Erstelle einen vollständigen, optimierten DALL-E 3 Prompt auf Englisch für das folgende LinkedIn-Post-Bild.\\n\\nPost-Titel: ' + $json.titel + '\\nSäule: ' + $json.saeule + '\\nPost-Typ: ' + $json.post_typ + '\\n\\nRohe Bildidee:\\n' + $json.image_prompt + ($json.linkedin_post ? '\\n\\nPost-Kontext (Auszug):\\n' + $json.linkedin_post : '') + '\\n\\nAnforderungen für den Prompt:\\n- Professioneller Business-Stil, geeignet für LinkedIn\\n- Kein Text im Bild\\n- Helle, einladende Atmosphäre\\n- Realistisch oder clean-illustrativ (kein Cartoon)\\n- Maximale Länge: 400 Zeichen\\n- Nur den fertigen Prompt ausgeben, keine Erklärungen'\n    }\n  ]\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-opus-4-5',\n  max_tokens: 400,\n  system: 'Du bist ein Experte für KI-Bildgenerierung mit DALL-E 3. Du leitest aus LinkedIn-Posts präzise, professionelle Bildprompts auf Englisch ab. Deine Prompts erzeugen Titelbilder im Business-Stil für LinkedIn.',\n  messages: [{\n    role: 'user',\n    content: 'Leite aus dem folgenden LinkedIn-Post einen vollständigen DALL-E 3 Bildprompt auf Englisch ab.\\n\\n' + 'Post-Titel: ' + $json.titel + '\\n' + 'Säule: ' + $json.saeule + '\\n' + ($json.hook ? 'Hook: ' + $json.hook + '\\n' : '') + '\\nLinkedIn-Post:\\n' + $json.linkedin_post.substring(0, 1000) + '\\n\\nAnforderungen:\\n- Professioneller Business-Stil für LinkedIn\\n- Kein Text oder Schrift im Bild\\n- Helle, einladende Atmosphäre\\n- Realistisch oder clean-illustrativ (kein Cartoon)\\n- Bezug zur inhaltlichen Kernaussage des Posts\\n- Maximale Länge: 400 Zeichen\\n- Nur den fertigen englischen Prompt ausgeben, keine Erklärungen'\n  }]\n}) }}",
         "options": {}
       },
       "id": "f6000001-0001-0001-0001-000000000006",
-      "name": "Claude: Prompt optimieren",
+      "name": "Claude: Prompt ableiten",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -157,11 +157,11 @@
           "name": "Anthropic account 6"
         }
       },
-      "notes": "Claude verfeinert die rohe Bildidee zu einem vollständigen, DALL-E 3 optimierten Prompt auf Englisch."
+      "notes": "Claude leitet aus dem LinkedIn-Post-Text und Hook einen DALL-E 3 Bildprompt ab."
     },
     {
       "parameters": {
-        "jsCode": "const claudeResponse = $input.first().json;\nconst prevItem = $('Posts einzeln verarbeiten').item.json;\n\nconst optimierterPrompt = claudeResponse?.content?.[0]?.text?.trim() || '';\n\nif (!optimierterPrompt) {\n  console.log(`⚠️ Kein Prompt erhalten für: ${prevItem.titel}`);\n}\n\nconsole.log(`✅ Prompt optimiert für: ${prevItem.titel}`);\nconsole.log(`   Original: ${prevItem.image_prompt.substring(0, 80)}...`);\nconsole.log(`   Optimiert: ${optimierterPrompt.substring(0, 80)}...`);\n\nreturn [{\n  json: {\n    page_id: prevItem.page_id,\n    titel: prevItem.titel,\n    original_prompt: prevItem.image_prompt,\n    optimierter_prompt: optimierterPrompt\n  }\n}];"
+        "jsCode": "const claudeResponse = $input.first().json;\nconst prev = $('Posts einzeln verarbeiten').item.json;\n\nconst optimierterPrompt = claudeResponse?.content?.[0]?.text?.trim() || '';\n\nif (!optimierterPrompt) {\n  console.log(`Kein Prompt erhalten für: ${prev.titel}`);\n}\n\nconsole.log(`Prompt abgeleitet für: ${prev.titel}`);\n\nreturn [{\n  json: {\n    page_id: prev.page_id,\n    titel: prev.titel,\n    image_prompt: optimierterPrompt\n  }\n}];"
       },
       "id": "f6000001-0001-0001-0001-000000000007",
       "name": "Prompt extrahieren",
@@ -171,7 +171,7 @@
         1680,
         200
       ],
-      "notes": "Extrahiert den optimierten Prompt aus der Claude-Antwort und fügt ihn mit der page_id zusammen."
+      "notes": "Extrahiert den generierten Prompt aus der Claude-Antwort."
     },
     {
       "parameters": {
@@ -186,7 +186,7 @@
           "propertyValues": [
             {
               "key": "ImagePrompt|rich_text",
-              "textContent": "={{ $json.optimierter_prompt }}"
+              "textContent": "={{ $json.image_prompt }}"
             }
           ]
         }
@@ -206,7 +206,7 @@
         }
       },
       "continueOnFail": true,
-      "notes": "Überschreibt das Feld 'ImagePrompt' mit dem optimierten DALL-E 3 Prompt."
+      "notes": "Speichert den abgeleiteten DALL-E 3 Prompt im Feld 'ImagePrompt'."
     },
     {
       "parameters": {
@@ -221,11 +221,11 @@
         200
       ],
       "webhookId": "f6000001-0001-0001-0001-000000000009",
-      "notes": "3 Sekunden Pause zwischen Posts für API-Rate-Limit."
+      "notes": "3 Sekunden Pause zwischen Posts."
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconsole.log(`✅ Image-Prompt-Optimierung abgeschlossen – ${items.length} Post(s) verarbeitet`);\nreturn [{ json: { status: 'Abgeschlossen', verarbeitet: items.length } }];"
+        "jsCode": "const items = $input.all();\nconst anzahl = items.filter(i => i.json?.image_prompt).length;\nconsole.log(`Image-Prompt-Generierung abgeschlossen – ${anzahl} Prompt(s) erstellt`);\nreturn [{ json: { status: 'Abgeschlossen', verarbeitet: anzahl } }];"
       },
       "id": "f6000001-0001-0001-0001-000000000010",
       "name": "Abschluss-Log",
@@ -235,21 +235,54 @@
         2400,
         300
       ],
-      "notes": "Protokolliert die Anzahl der verarbeiteten Posts."
+      "notes": "Zählt erfolgreich generierte Prompts."
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst heute = new Date().toLocaleDateString('de-DE');\n\nconst postListHtml = items.map(i => {\n  const titel = i.json?.titel || '-';\n  const prompt = i.json?.optimierter_prompt?.substring(0, 150) || '';\n  return `<li><strong>${titel}</strong><br><small style=\"color:#555;font-family:monospace\">${prompt}${prompt.length === 150 ? '...' : ''}</small></li>`;\n}).join('');\n\nreturn [{\n  json: {\n    to: 'wolfgang.baierl@blboardsolutions.de',\n    subject: `[LinkedIn] ${items.length} Bildprompt(s) optimiert – bereit für DALL-E 3`,\n    body: `<div style=\"font-family:Arial,sans-serif;max-width:600px\">\n<h2 style=\"color:#2c5282\">Image-Prompts optimiert</h2>\n<p><strong>${items.length}</strong> Bildprompt(s) wurden von Claude für DALL-E 3 optimiert und im Feld <em>ImagePrompt</em> gespeichert:</p>\n<ul style=\"line-height:2\">${postListHtml}</ul>\n<hr style=\"margin:20px 0\">\n<p><strong>So nutzt du die Prompts:</strong></p>\n<ol>\n  <li>Content Pipeline in Notion öffnen</li>\n  <li>Beim gewünschten Post das Feld <em>ImagePrompt</em> kopieren</li>\n  <li>In <a href=\"https://chat.openai.com\">ChatGPT → DALL-E 3</a> oder <a href=\"https://www.bing.com/images/create\">Bing Image Creator</a> einfügen</li>\n  <li>Generiertes Bild herunterladen und zum Post hochladen</li>\n</ol>\n<p><a href=\"https://www.notion.so/35147c762802803f8311ce87bcce27a5\" style=\"background:#2c5282;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\">→ Content Pipeline öffnen</a></p>\n<p style=\"color:#999;font-size:0.8em;margin-top:30px\">Automatisch generiert am ${heute} · n8n LinkedIn-Workflow</p>\n</div>`\n  }\n}];"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-prompts",
+              "leftValue": "={{ $json.verarbeitet > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f6000001-0001-0001-0001-000000000013",
+      "name": "Prompts erstellt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        300
+      ],
+      "notes": "Nur E-Mail senden wenn mindestens 1 Prompt generiert wurde."
+    },
+    {
+      "parameters": {
+        "jsCode": "const count = $('Abschluss-Log').first().json.verarbeitet;\nconst heute = new Date().toLocaleDateString('de-DE');\n\nreturn [{\n  json: {\n    to: 'wolfgang.baierl@blboardsolutions.de',\n    subject: `[LinkedIn] ${count} Bildprompt(s) generiert – bereit für DALL-E 3`,\n    body: `<div style=\"font-family:Arial,sans-serif;max-width:600px\"><h2 style=\"color:#2c5282\">Image-Prompts generiert</h2><p>Für <strong>${count}</strong> Post(s) wurde ein DALL-E 3 Bildprompt aus dem LinkedIn-Text abgeleitet und im Feld <em>ImagePrompt</em> gespeichert.</p><hr style=\"margin:20px 0\"><p><strong>So nutzt du die Prompts:</strong></p><ol><li>Content Pipeline in Notion öffnen</li><li>Beim gewünschten Post das Feld <em>ImagePrompt</em> kopieren</li><li>In <a href=\\\"https://chat.openai.com\\\">ChatGPT → DALL-E 3</a> oder <a href=\\\"https://www.bing.com/images/create\\\">Bing Image Creator</a> einfügen</li><li>Generiertes Bild herunterladen und zum Post hinzufügen</li><li>Checkbox <em>ImagePrompt generieren</em> in Notion deaktivieren</li></ol><p><a href=\\\"https://www.notion.so/35147c762802803f8311ce87bcce27a5\\\" style=\\\"background:#2c5282;color:#fff;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block\\\">→ Content Pipeline öffnen</a></p><p style=\\\"color:#999;font-size:0.8em;margin-top:30px\\\">Automatisch generiert am ${heute} · n8n LinkedIn-Workflow</p></div>`\n  }\n}];"
       },
       "id": "f6000001-0001-0001-0001-000000000011",
       "name": "E-Mail Inhalt aufbauen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2640,
+        2880,
         300
       ],
-      "notes": "Baut Zusammenfassungs-E-Mail mit allen optimierten Prompts inkl. Anleitung zur Nutzung mit DALL-E 3."
+      "notes": "Baut Zusammenfassungs-E-Mail mit Anleitung zur DALL-E 3 Nutzung."
     },
     {
       "parameters": {
@@ -266,7 +299,7 @@
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
       "position": [
-        2880,
+        3120,
         300
       ],
       "credentials": {
@@ -276,7 +309,7 @@
         }
       },
       "continueOnFail": true,
-      "notes": "Sendet via Outlook: Zusammenfassung der optimierten Bildprompts mit Copy-Paste-Anleitung."
+      "notes": "Sendet via Outlook: Zusammenfassung mit Hinweis zur Nutzung der generierten Prompts."
     }
   ],
   "pinData": {},
@@ -285,25 +318,25 @@
       "main": [
         [
           {
-            "node": "Posts mit ImagePrompt laden",
+            "node": "Posts mit Flag laden",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Posts mit ImagePrompt laden": {
+    "Posts mit Flag laden": {
       "main": [
         [
           {
-            "node": "Posts mit Prompt gefunden?",
+            "node": "Posts mit Flag gefunden?",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Posts mit Prompt gefunden?": {
+    "Posts mit Flag gefunden?": {
       "main": [
         [
           {
@@ -337,14 +370,14 @@
         ],
         [
           {
-            "node": "Claude: Prompt optimieren",
+            "node": "Claude: Prompt ableiten",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Claude: Prompt optimieren": {
+    "Claude: Prompt ableiten": {
       "main": [
         [
           {
@@ -392,11 +425,23 @@
       "main": [
         [
           {
-            "node": "E-Mail Inhalt aufbauen",
+            "node": "Prompts erstellt?",
             "type": "main",
             "index": 0
           }
         ]
+      ]
+    },
+    "Prompts erstellt?": {
+      "main": [
+        [
+          {
+            "node": "E-Mail Inhalt aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     },
     "E-Mail Inhalt aufbauen": {
@@ -415,7 +460,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "linkedin-image-prompt-v1-0",
+  "versionId": "linkedin-image-prompt-v2-0",
   "meta": {
     "templateCredsSetupCompleted": false,
     "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
