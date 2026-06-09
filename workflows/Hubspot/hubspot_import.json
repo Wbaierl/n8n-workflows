@@ -44,10 +44,7 @@
       "name": "Upload Formular",
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.2,
-      "position": [
-        -304,
-        -400
-      ],
+      "position": [-304, -400],
       "webhookId": "34aff55b-09e3-4bf5-8094-6362e5e5b357"
     },
     {
@@ -62,10 +59,7 @@
       "name": "Tabelle einlesen",
       "type": "n8n-nodes-base.spreadsheetFile",
       "typeVersion": 2,
-      "position": [
-        -80,
-        -400
-      ]
+      "position": [-80, -400]
     },
     {
       "parameters": {
@@ -75,10 +69,7 @@
       "name": "Daten mappen",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        144,
-        -400
-      ]
+      "position": [144, -400]
     },
     {
       "parameters": {
@@ -137,44 +128,24 @@
       "name": "HubSpot Kontakt Upsert",
       "type": "n8n-nodes-base.hubspot",
       "typeVersion": 2,
-      "position": [
-        368,
-        -400
-      ],
+      "position": [368, -400],
       "credentials": {
         "hubspotAppToken": {
           "id": "8bKwr1vaf9OfVi2R",
           "name": "HubSpot Service Key account"
         }
-      },
-      "notes": "ANPASSEN: HubSpot Credential auswählen + sicherstellen dass 'leadtyp' als Custom Property in HubSpot existiert"
+      }
     },
     {
       "parameters": {
-        "aggregate": "aggregateAllItemData",
+        "batchSize": 5,
         "options": {}
       },
-      "id": "d5e57012-7f48-4705-a0fa-feadced4daac",
-      "name": "Alle IDs sammeln",
-      "type": "n8n-nodes-base.aggregate",
-      "typeVersion": 1,
-      "position": [
-        800,
-        -400
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// ============================================================\n// HubSpot IDs als CSV ausgeben (für Rückschreiben in Spalte DE)\n// ============================================================\n// Gibt eine CSV-Datei aus mit: email, hubspotId\n// Diese kann genutzt werden, um manuell oder per VLOOKUP\n// die IDs in die Originaldatei (Spalte DE / hubspotId) einzutragen.\n// ============================================================\n\nconst allData = items[0].json.data;\n\nif (!Array.isArray(allData)) {\n  return [{ json: { info: 'Keine Daten zum Exportieren' } }];\n}\n\nlet csvLines = ['email,hubspotId'];\n\nfor (const row of allData) {\n  const email = (row.email || '').replace(/,/g, '');\n  const hsId  = (row.id    || '').toString();\n  csvLines.push(`${email},${hsId}`);\n}\n\nreturn [{\n  json: {\n    totalImported: csvLines.length - 1,\n    message: `${csvLines.length - 1} Kontakte erfolgreich importiert`,\n  },\n  binary: {\n    data: {\n      data: Buffer.from(csvLines.join('\\n')).toString('base64'),\n      mimeType: 'text/csv',\n      fileExtension: 'csv',\n      fileName: 'hubspot_ids_rueckschreiben.csv',\n    }\n  }\n}];\n"
-      },
-      "id": "a232c781-59e7-4b76-a27a-c7f61dff6c73",
-      "name": "ID-Export vorbereiten",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1024,
-        -400
-      ]
+      "id": "c7d8e9f0-1234-4000-8000-aabbccddeeff",
+      "name": "Loop: List Add",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [600, -400]
     },
     {
       "parameters": {
@@ -200,16 +171,47 @@
       "name": "HTTP Request",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [
-        576,
-        -400
-      ],
+      "position": [820, -400],
       "credentials": {
         "hubspotAppToken": {
           "id": "zGX2k1SKubP15OOY",
           "name": "HubSpot account 4"
         }
       }
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "a1b2c3d4-5678-4000-8000-112233445566",
+      "name": "Warte: Rate Limit",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [820, -240],
+      "webhookId": "b9c8d7e6-f5a4-4000-8000-aabbccddeeff"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "d5e57012-7f48-4705-a0fa-feadced4daac",
+      "name": "Alle IDs sammeln",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1040, -400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// HubSpot IDs als CSV ausgeben (für Rückschreiben in Spalte DE)\n// ============================================================\n// Gibt eine CSV-Datei aus mit: email, hubspotId\n// Diese kann genutzt werden, um manuell oder per VLOOKUP\n// die IDs in die Originaldatei (Spalte DE / hubspotId) einzutragen.\n// ============================================================\n\nconst allData = items[0].json.data;\n\nif (!Array.isArray(allData)) {\n  return [{ json: { info: 'Keine Daten zum Exportieren' } }];\n}\n\nlet csvLines = ['email,hubspotId'];\n\nfor (const row of allData) {\n  const email = (row.email || '').replace(/,/g, '');\n  const hsId  = (row.id    || '').toString();\n  csvLines.push(`${email},${hsId}`);\n}\n\nreturn [{\n  json: {\n    totalImported: csvLines.length - 1,\n    message: `${csvLines.length - 1} Kontakte erfolgreich importiert`,\n  },\n  binary: {\n    data: {\n      data: Buffer.from(csvLines.join('\\n')).toString('base64'),\n      mimeType: 'text/csv',\n      fileExtension: 'csv',\n      fileName: 'hubspot_ids_rueckschreiben.csv',\n    }\n  }\n}];\n"
+      },
+      "id": "a232c781-59e7-4b76-a27a-c7f61dff6c73",
+      "name": "ID-Export vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1264, -400]
     },
     {
       "parameters": {
@@ -228,10 +230,7 @@
       },
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
-      "position": [
-        1232,
-        -400
-      ],
+      "position": [1488, -400],
       "id": "364510f7-6757-4f96-abed-307cb6aed966",
       "name": "Send a message",
       "webhookId": "a742fd01-9baa-4b1e-b782-ed8b2b7c790c",
@@ -247,79 +246,48 @@
   "connections": {
     "Upload Formular": {
       "main": [
-        [
-          {
-            "node": "Tabelle einlesen",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Tabelle einlesen", "type": "main", "index": 0}]
       ]
     },
     "Tabelle einlesen": {
       "main": [
-        [
-          {
-            "node": "Daten mappen",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Daten mappen", "type": "main", "index": 0}]
       ]
     },
     "Daten mappen": {
       "main": [
-        [
-          {
-            "node": "HubSpot Kontakt Upsert",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "HubSpot Kontakt Upsert", "type": "main", "index": 0}]
       ]
     },
     "HubSpot Kontakt Upsert": {
       "main": [
-        [
-          {
-            "node": "HTTP Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Loop: List Add", "type": "main", "index": 0}]
       ]
     },
-    "Alle IDs sammeln": {
+    "Loop: List Add": {
       "main": [
-        [
-          {
-            "node": "ID-Export vorbereiten",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "ID-Export vorbereiten": {
-      "main": [
-        [
-          {
-            "node": "Send a message",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "HTTP Request", "type": "main", "index": 0}],
+        [{"node": "Alle IDs sammeln", "type": "main", "index": 0}]
       ]
     },
     "HTTP Request": {
       "main": [
-        [
-          {
-            "node": "Alle IDs sammeln",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{"node": "Warte: Rate Limit", "type": "main", "index": 0}]
+      ]
+    },
+    "Warte: Rate Limit": {
+      "main": [
+        [{"node": "Loop: List Add", "type": "main", "index": 0}]
+      ]
+    },
+    "Alle IDs sammeln": {
+      "main": [
+        [{"node": "ID-Export vorbereiten", "type": "main", "index": 0}]
+      ]
+    },
+    "ID-Export vorbereiten": {
+      "main": [
+        [{"node": "Send a message", "type": "main", "index": 0}]
       ]
     }
   },
