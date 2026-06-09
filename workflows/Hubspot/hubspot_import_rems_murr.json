@@ -1,0 +1,321 @@
+{
+  "name": "HubSpot Import – Rems Murr Regional",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "HubSpot Kontakt-Import",
+        "formDescription": "Excel-Datei (.xlsx) hochladen um Kontakte in HubSpot zu importieren.\nDie Datei muss das Standard-Format mit Leadtyp in A2 und Segmentname in A3 haben.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Kontaktliste",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".xlsx",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "HubSpot Listen-ID",
+              "placeholder": "z.B. 123",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "buttonLabel": "Import starten"
+        }
+      },
+      "id": "8719ceaa-933a-46fd-af0e-bb22c51d084d",
+      "name": "Upload Formular",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -304,
+        -400
+      ],
+      "webhookId": "34aff55b-09e3-4bf5-8094-6362e5e5b357"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "Kontaktliste",
+        "options": {
+          "headerRow": true,
+          "range": ""
+        }
+      },
+      "id": "eac6df08-d5a3-482c-9b9f-908ed21486d0",
+      "name": "Tabelle einlesen",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// SCHRITT: Metadaten auslesen + Kontakte mappen\n// ============================================================\n// Zeilenstruktur der Excel-Datei:\n//   items[0]  → Zeile 2: Leadtyp (A = \"Leadtyp:\", B = Wert \"Unternehmerboard\")\n//   items[1]  → Zeile 3: Segmentname (A = \"Segmentname:\", B = Wert)\n//   items[2]  → Zeile 4: HubSpot-Feldnamen (Mapping-Zeile)\n//   items[3+] → Zeile 5+: Kontaktdaten\n// ============================================================\n\nconst allItems = items.map(i => i.json);\n\n// --- Metadaten aus den ersten 3 Items lesen ---\n// In der Excel hat Spalte A den Label, Spalte B den Wert.\n// Zeile 2 → items[0]\nconst leadtypValue = allItems[0]['email'] || 'Unternehmerboard';\n// Zeile 3 → items[1]\nconst segmentnameValue = allItems[1]['email'] || '';\n\n// --- Listen-ID aus Formular ---\nconst listId = $('Upload Formular').first().json['HubSpot Listen-ID'] || '';\n\n// --- Kontaktzeilen ab items[3] ---\nconst contactRows = allItems.slice(3);\n\nconst result = [];\n\nfor (const row of contactRows) {\n  // Nur Zeilen mit gültiger E-Mail UND vorhandenem Nachnamen verarbeiten\n  const email = (row['email'] || '').toString().trim();\n  if (!email || email === '') continue;\n\n  const lastname = (row['lastName'] || '').toString().trim();\n  if (!lastname || lastname === '') continue;\n\n  // Telefonnummer bereinigen: führendes ' entfernen (Excel-Artefakt)\n  let phone = (row['phone'] || '').toString().trim();\n  if (phone.startsWith(\"'\")) phone = phone.slice(1);\n\n  result.push({\n    json: {\n      // ── HubSpot Standard-Felder ──────────────────────────────\n      email:           email,\n      firstname:       (row['firstName'] || '').toString().trim(),\n      lastname:        lastname,\n      phone:           phone,\n      hs_linkedin_url: (row['linkedinUrl']   || '').toString().trim(),\n      jobtitle:        (row['jobTitle']      || '').toString().trim(),\n      company:         (row['companyName']   || '').toString().trim(),\n      website:         (row['companyDomain'] || '').toString().trim(),\n      // ── Custom-Property ─────────────────────────────────────\n      leadtyp:         leadtypValue,\n      // ── Interne Felder für Rückschreiben der HubSpot-ID ──────\n      _segmentname:    segmentnameValue,\n      _source_id:      (row['_id'] || '').toString().trim(),\n      _listId:         listId,\n    }\n  });\n}\n\nreturn result;\n"
+      },
+      "id": "fd07d6f2-356f-4161-a606-01ee0d908bb4",
+      "name": "Daten mappen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "email": "={{ $json.email }}",
+        "additionalFields": {
+          "customPropertiesUi": {
+            "customPropertiesValues": [
+              {
+                "property": "firstname",
+                "value": "={{ $json.firstname }}"
+              },
+              {
+                "property": "lastname",
+                "value": "={{ $json.lastname }}"
+              },
+              {
+                "property": "phone",
+                "value": "={{ $json.phone }}"
+              },
+              {
+                "property": "hs_linkedin_url",
+                "value": "={{ $json.hs_linkedin_url }}"
+              },
+              {
+                "property": "jobtitle",
+                "value": "={{ $json.jobtitle }}"
+              },
+              {
+                "property": "company",
+                "value": "={{ $json.company }}"
+              },
+              {
+                "property": "website",
+                "value": "={{ $json.website }}"
+              },
+              {
+                "property": "leadtyp",
+                "value": "={{ $json.leadtyp }}"
+              }
+            ]
+          },
+          "leadStatus": "NEW"
+        },
+        "options": {}
+      },
+      "id": "5d6379eb-97b7-40a2-8128-5e3ef2213f65",
+      "name": "HubSpot Kontakt Upsert",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2,
+      "position": [
+        368,
+        -400
+      ],
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "8bKwr1vaf9OfVi2R",
+          "name": "HubSpot Service Key account"
+        }
+      },
+      "notes": "ANPASSEN: HubSpot Credential auswählen + sicherstellen dass 'leadtyp' als Custom Property in HubSpot existiert"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "d5e57012-7f48-4705-a0fa-feadced4daac",
+      "name": "Alle IDs sammeln",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// HubSpot IDs als CSV ausgeben (für Rückschreiben in Spalte DE)\n// ============================================================\n// Gibt eine CSV-Datei aus mit: email, hubspotId\n// Diese kann genutzt werden, um manuell oder per VLOOKUP\n// die IDs in die Originaldatei (Spalte DE / hubspotId) einzutragen.\n// ============================================================\n\nconst allData = items[0].json.data;\n\nif (!Array.isArray(allData)) {\n  return [{ json: { info: 'Keine Daten zum Exportieren' } }];\n}\n\nlet csvLines = ['email,hubspotId'];\n\nfor (const row of allData) {\n  const email = (row.email || '').replace(/,/g, '');\n  const hsId  = (row.id    || '').toString();\n  csvLines.push(`${email},${hsId}`);\n}\n\nreturn [{\n  json: {\n    totalImported: csvLines.length - 1,\n    message: `${csvLines.length - 1} Kontakte erfolgreich importiert`,\n  },\n  binary: {\n    data: {\n      data: Buffer.from(csvLines.join('\\n')).toString('base64'),\n      mimeType: 'text/csv',\n      fileExtension: 'csv',\n      fileName: 'hubspot_ids_rueckschreiben.csv',\n    }\n  }\n}];\n"
+      },
+      "id": "a232c781-59e7-4b76-a27a-c7f61dff6c73",
+      "name": "ID-Export vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1024,
+        -400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.hubapi.com/crm/v3/lists/{{ $('Upload Formular').first().json['HubSpot Listen-ID'] }}/memberships/add",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=[\"{{ $json.id }}\"]",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        576,
+        -400
+      ],
+      "id": "be78d48c-feaf-40f4-b892-d443cfc128b6",
+      "name": "HTTP Request",
+      "credentials": {
+        "hubspotApi": {
+          "id": "higIK45fC1d3SI1O",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "HubSpot Import abgeschlossen",
+        "bodyContent": "Alle Daten wurden übertragen\n",
+        "additionalFields": {
+          "attachments": {
+            "attachments": [
+              {
+                "binaryPropertyName": "data"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        -400
+      ],
+      "id": "364510f7-6757-4f96-abed-307cb6aed966",
+      "name": "Send a message",
+      "webhookId": "a742fd01-9baa-4b1e-b782-ed8b2b7c790c",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Upload Formular": {
+      "main": [
+        [
+          {
+            "node": "Tabelle einlesen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tabelle einlesen": {
+      "main": [
+        [
+          {
+            "node": "Daten mappen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daten mappen": {
+      "main": [
+        [
+          {
+            "node": "HubSpot Kontakt Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Kontakt Upsert": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alle IDs sammeln": {
+      "main": [
+        [
+          {
+            "node": "ID-Export vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ID-Export vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Alle IDs sammeln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e3249410-3e2a-401b-ba55-93a9ef83e016",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "RtE3X7Vnlk9oQFUy",
+  "tags": []
+}
