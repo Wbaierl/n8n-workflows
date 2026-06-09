@@ -158,7 +158,7 @@
         "method": "PUT",
         "url": "=https://api.hubapi.com/crm/v3/lists/{{ $('Upload Formular').first().json['HubSpot Listen-ID'] }}/memberships/add",
         "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotApi",
+        "nodeCredentialType": "hubspotAppToken",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -188,9 +188,9 @@
       "id": "be78d48c-feaf-40f4-b892-d443cfc128b6",
       "name": "HTTP Request",
       "credentials": {
-        "hubspotApi": {
-          "id": "higIK45fC1d3SI1O",
-          "name": "HubSpot account"
+        "hubspotAppToken": {
+          "id": "zGX2k1SKubP15OOY",
+          "name": "HubSpot account 4"
         }
       }
     },
