@@ -15,8 +15,8 @@
     {
       "parameters": {
         "toRecipients": "wolfgang.baierl@blboardsolutions.de",
-        "subject": "⚠️ Fehler in HubSpot_Update Workflow",
-        "bodyContent": "=Fehler in Node: {{ $json.execution.lastNodeExecuted }}\nFehlermeldung: {{ $json.execution.error.message }}\nZeit: {{ $now.toISO() }}\nExecution ID: {{ $json.execution.id }}",
+        "subject": "=⚠️ Fehler in Workflow: {{ $json.execution.workflowData.name }}",
+        "bodyContent": "=Workflow: {{ $json.execution.workflowData.name }}\nFehler in Node: {{ $json.execution.lastNodeExecuted }}\nFehlermeldung: {{ $json.execution.error.message }}\nZeit: {{ $now.toISO() }}\nExecution ID: {{ $json.execution.id }}",
         "additionalFields": {}
       },
       "type": "n8n-nodes-base.microsoftOutlook",

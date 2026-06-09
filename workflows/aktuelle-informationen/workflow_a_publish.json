@@ -106,7 +106,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const loopItem  = $('Loop: Ein Paar pro Durchlauf').item.json;\nconst notionData = $json;\n\nconst spaceKey = notionData.property_confluence_space_key || '';\n\nconst empfaengerTyp  = loopItem.empfaengerTyp;\nconst isGruppenSpace = spaceKey.startsWith('GP');\nconst isKundenSpace  = spaceKey.startsWith('KP');\n\nif (empfaengerTyp === 'gruppe' && !isGruppenSpace) {\n  throw new Error(\n    `GUARD VERLETZUNG: Typ=Gruppe aber SpaceKey=\"${spaceKey}\" ist kein GP*-Space.` +\n    ` Notion-Seite: ${loopItem.notionPageId}`\n  );\n}\nif (empfaengerTyp === 'individuell' && !isKundenSpace) {\n  throw new Error(\n    `GUARD VERLETZUNG: Typ=Individuell aber SpaceKey=\"${spaceKey}\" ist kein KP*-Space.` +\n    ` Notion-Seite: ${loopItem.notionPageId}`\n  );\n}\n\nreturn {\n  json: {\n    spaceKey,\n    empfaengerTyp,\n    notionPageId:   loopItem.notionPageId,\n    titel:          loopItem.titel,\n    kurztext:       loopItem.kurztext,\n    kategorie:      loopItem.kategorie,\n    datum:          loopItem.datum,\n    currentBlogIDs: loopItem.currentBlogIDs\n  }\n};"
+        "jsCode": "const loopItem  = $('Loop: Ein Paar pro Durchlauf').item.json;\nconst notionData = $json;\n\nconst spaceKey = notionData.property_confluence_space_key || '';\n\nreturn {\n  json: {\n    spaceKey,\n    empfaengerTyp:  loopItem.empfaengerTyp,\n    notionPageId:   loopItem.notionPageId,\n    titel:          loopItem.titel,\n    kurztext:       loopItem.kurztext,\n    kategorie:      loopItem.kategorie,\n    datum:          loopItem.datum,\n    currentBlogIDs: loopItem.currentBlogIDs\n  }\n};"
       },
       "id": "6cc889dc-b487-4376-82d7-1e5e8f18fc05",
       "name": "Daten zusammenfuehren",
@@ -142,6 +142,7 @@
       "name": "Confluence: Blogpost erstellen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
       "position": [
         1840,
         384
@@ -156,14 +157,28 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "// Neue Blog-ID aus Confluence-Antwort\nconst newBlogId  = $json.id || '';\nconst prev       = $('Daten zusammenfuehren').item.json;\nconst spaceKey   = prev.spaceKey || '';\nconst notionPageId = prev.notionPageId || '';\nconst datum      = prev.datum || '';\n\n// Bestehende Blog-IDs um neuen Eintrag ergaenzen\n// Format: \"KPA:12345,KPB:67890\"\nconst current    = prev.currentBlogIDs || '';\nconst newEntry   = `${spaceKey}:${newBlogId}`;\nconst updatedBlogIDs = current\n  ? `${current},${newEntry}`\n  : newEntry;\n\nreturn {\n  json: {\n    notionPageId,\n    updatedBlogIDs,\n    datum\n  }\n};"
+        "jsCode": "const res = $json;\n\nif (res.id) {\n  return { json: { _status: 'success', confluenceId: res.id } };\n}\n\nconst statusCode = res.statusCode || 0;\nconst message = res.message || res.error || JSON.stringify(res);\n\nif (statusCode === 400) {\n  return { json: { _status: 'duplicate' } };\n}\n\nthrow new Error(`Confluence Fehler (${statusCode}): ${message}`);"
+      },
+      "id": "c3d4e5f6-a7b8-9012-cdef-345678901234",
+      "name": "Fehlerbehandlung Confluence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const result = $json;\nconst prev   = $('Daten zusammenfuehren').item.json;\nconst notionPageId = prev.notionPageId || '';\nconst datum        = prev.datum || '';\n\nif (result._status === 'duplicate') {\n  return {\n    json: {\n      notionPageId,\n      updatedBlogIDs: prev.currentBlogIDs || '',\n      datum\n    }\n  };\n}\n\nconst newBlogId      = result.confluenceId || '';\nconst spaceKey       = prev.spaceKey || '';\nconst current        = prev.currentBlogIDs || '';\nconst newEntry       = `${spaceKey}:${newBlogId}`;\nconst updatedBlogIDs = current ? `${current},${newEntry}` : newEntry;\n\nreturn {\n  json: {\n    notionPageId,\n    updatedBlogIDs,\n    datum\n  }\n};"
       },
       "id": "fd334f9d-9ac1-4a47-b432-e686916fcd6b",
       "name": "Code: Blog-ID speichern",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2064,
+        2160,
         384
       ]
     },
@@ -391,6 +406,17 @@
       "main": [
         [
           {
+            "node": "Fehlerbehandlung Confluence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fehlerbehandlung Confluence": {
+      "main": [
+        [
+          {
             "node": "Code: Blog-ID speichern",
             "type": "main",
             "index": 0
@@ -475,7 +501,8 @@
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "binaryMode": "separate"
+    "binaryMode": "separate",
+    "errorWorkflow": "HSomkpfv9ZqJU9Jn"
   },
   "versionId": "673b611d-ae8a-480c-b538-c06c6052b91c",
   "meta": {
