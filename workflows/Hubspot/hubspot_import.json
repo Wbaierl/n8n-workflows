@@ -155,38 +155,21 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/v3/lists/{{ $('Upload Formular').first().json['HubSpot Listen-ID'] }}/memberships/add",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "hubspotAppToken",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "=[\"{{ $json.id }}\"]",
-        "options": {
-          "batching": {
-            "batch": {
-              "batchSize": 5
-            }
-          }
-        }
+        "authentication": "appToken",
+        "resource": "contactList",
+        "operation": "add",
+        "listId": "={{ $('Upload Formular').first().json['HubSpot Listen-ID'] }}",
+        "by": "id",
+        "id": "={{ $json.id }}"
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
+      "id": "be78d48c-feaf-40f4-b892-d443cfc128b6",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
       "position": [
         576,
         -400
       ],
-      "id": "be78d48c-feaf-40f4-b892-d443cfc128b6",
-      "name": "HTTP Request",
       "credentials": {
         "hubspotAppToken": {
           "id": "zGX2k1SKubP15OOY",
