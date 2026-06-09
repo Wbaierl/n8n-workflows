@@ -4,7 +4,7 @@
     {
       "parameters": {
         "formTitle": "HubSpot Kontakt-Import",
-        "formDescription": "Excel-Datei (.xlsx) hochladen um Kontakte in HubSpot zu importieren.\nDie Datei muss das Standard-Format mit Leadtyp in A2 und Segmentname in A3 haben.",
+        "formDescription": "Excel-Datei (.xlsx) hochladen um Kontakte in HubSpot zu importieren.",
         "formFields": {
           "values": [
             {
@@ -16,7 +16,22 @@
             },
             {
               "fieldLabel": "HubSpot Listen-ID",
-              "placeholder": "z.B. 123",
+              "placeholder": "z.B. 45",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Leadtyp",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Unternehmerboard" },
+                  { "option": "Dozent" },
+                  { "option": "Coaching" },
+                  { "option": "Beratung" },
+                  { "option": "Mentoring" },
+                  { "option": "Partner" }
+                ]
+              },
               "requiredField": true
             }
           ]
@@ -54,7 +69,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================\n// SCHRITT: Metadaten auslesen + Kontakte mappen\n// ============================================================\n// Zeilenstruktur der Excel-Datei:\n//   items[0]  → Zeile 2: Leadtyp (A = \"Leadtyp:\", B = Wert \"Unternehmerboard\")\n//   items[1]  → Zeile 3: Segmentname (A = \"Segmentname:\", B = Wert)\n//   items[2]  → Zeile 4: HubSpot-Feldnamen (Mapping-Zeile)\n//   items[3+] → Zeile 5+: Kontaktdaten\n// ============================================================\n\nconst allItems = items.map(i => i.json);\n\n// --- Metadaten aus den ersten 3 Items lesen ---\n// In der Excel hat Spalte A den Label, Spalte B den Wert.\n// Zeile 2 → items[0]\nconst leadtypValue = allItems[0]['email'] || 'Unternehmerboard';\n// Zeile 3 → items[1]\nconst segmentnameValue = allItems[1]['email'] || '';\n\n// --- Listen-ID aus Formular ---\nconst listId = $('Upload Formular').first().json['HubSpot Listen-ID'] || '';\n\n// --- Kontaktzeilen ab items[3] ---\nconst contactRows = allItems.slice(3);\n\nconst result = [];\n\nfor (const row of contactRows) {\n  // Nur Zeilen mit gültiger E-Mail UND vorhandenem Nachnamen verarbeiten\n  const email = (row['email'] || '').toString().trim();\n  if (!email || email === '') continue;\n\n  const lastname = (row['lastName'] || '').toString().trim();\n  if (!lastname || lastname === '') continue;\n\n  // Telefonnummer bereinigen: führendes ' entfernen (Excel-Artefakt)\n  let phone = (row['phone'] || '').toString().trim();\n  if (phone.startsWith(\"'\")) phone = phone.slice(1);\n\n  result.push({\n    json: {\n      // ── HubSpot Standard-Felder ──────────────────────────────\n      email:           email,\n      firstname:       (row['firstName'] || '').toString().trim(),\n      lastname:        lastname,\n      phone:           phone,\n      hs_linkedin_url: (row['linkedinUrl']   || '').toString().trim(),\n      jobtitle:        (row['jobTitle']      || '').toString().trim(),\n      company:         (row['companyName']   || '').toString().trim(),\n      website:         (row['companyDomain'] || '').toString().trim(),\n      // ── Custom-Property ─────────────────────────────────────\n      leadtyp:         leadtypValue,\n      // ── Interne Felder für Rückschreiben der HubSpot-ID ──────\n      _segmentname:    segmentnameValue,\n      _source_id:      (row['_id'] || '').toString().trim(),\n      _listId:         listId,\n    }\n  });\n}\n\nreturn result;\n"
+        "jsCode": "// ============================================================\n// SCHRITT: Metadaten auslesen + Kontakte mappen\n// ============================================================\n// Leadtyp + Listen-ID kommen aus dem Upload-Formular.\n// Alle Excel-Zeilen sind Kontaktdaten (keine Metadaten-Zeilen).\n// ============================================================\n\nconst allItems = items.map(i => i.json);\n\n// --- Metadaten aus Formular ---\nconst leadtypValue = $('Upload Formular').first().json['Leadtyp'] || 'Unternehmerboard';\nconst listId = $('Upload Formular').first().json['HubSpot Listen-ID'] || '';\n\n// --- Segmentname (optional, aus erster Zeile wenn vorhanden) ---\nconst segmentnameValue = '';\n\n// --- Alle Zeilen sind Kontaktdaten ---\nconst contactRows = allItems;\n\nconst result = [];\n\nfor (const row of contactRows) {\n  // Nur Zeilen mit gültiger E-Mail UND vorhandenem Nachnamen verarbeiten\n  const email = (row['email'] || '').toString().trim();\n  if (!email || email === '') continue;\n\n  const lastname = (row['lastName'] || '').toString().trim();\n  if (!lastname || lastname === '') continue;\n\n  // Telefonnummer bereinigen: führendes ' entfernen (Excel-Artefakt)\n  let phone = (row['phone'] || '').toString().trim();\n  if (phone.startsWith(\"'\")) phone = phone.slice(1);\n\n  result.push({\n    json: {\n      // ── HubSpot Standard-Felder ──────────────────────────────\n      email:           email,\n      firstname:       (row['firstName'] || '').toString().trim(),\n      lastname:        lastname,\n      phone:           phone,\n      hs_linkedin_url: (row['linkedinUrl']   || '').toString().trim(),\n      jobtitle:        (row['jobTitle']      || '').toString().trim(),\n      company:         (row['companyName']   || '').toString().trim(),\n      website:         (row['companyDomain'] || '').toString().trim(),\n      // ── Custom-Property ─────────────────────────────────────\n      leadtyp:         leadtypValue,\n      // ── Interne Felder für Rückschreiben der HubSpot-ID ──────\n      _segmentname:    segmentnameValue,\n      _source_id:      (row['_id'] || '').toString().trim(),\n      _listId:         listId,\n    }\n  });\n}\n\nreturn result;\n"
       },
       "id": "fd07d6f2-356f-4161-a606-01ee0d908bb4",
       "name": "Daten mappen",
