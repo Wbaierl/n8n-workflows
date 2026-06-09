@@ -176,28 +176,34 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.hubapi.com/engagements/v1/engagements",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ engagement: { active: true, type: \"TASK\", timestamp: Date.now() }, associations: { contactIds: [Number($json.hubspot_id)] }, metadata: { subject: $json.task_titel, body: $json.task_beschreibung, status: \"NOT_STARTED\", forObjectType: \"CONTACT\", priority: \"HIGH\", taskType: \"TODO\", completionDate: new Date($json.task_faellig).getTime() } }) }}",
-        "options": {}
+        "authentication": "appToken",
+        "resource": "engagement",
+        "type": "task",
+        "dueDate": "={{ $json.task_faellig }}",
+        "metadata": {
+          "subject": "={{ $json.task_titel }}",
+          "body": "={{ $json.task_beschreibung }}",
+          "status": "NOT_STARTED",
+          "forObjectType": "CONTACT"
+        },
+        "additionalFields": {
+          "associations": {
+            "contactIds": "={{ $json.hubspot_id }}"
+          }
+        }
       },
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
+      "id": "8f0099f2-9358-427f-8dfa-5deb17adcbc2",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
       "position": [
         560,
         -192
       ],
-      "id": "8f0099f2-9358-427f-8dfa-5deb17adcbc2",
-      "name": "HTTP Request",
       "credentials": {
-        "httpHeaderAuth": {
-          "id": "bmeIeLStZ5OYTRaQ",
-          "name": "Header Auth account 2"
+        "hubspotAppToken": {
+          "id": "8bKwr1vaf9OfVi2R",
+          "name": "HubSpot Service Key account"
         }
       }
     },
