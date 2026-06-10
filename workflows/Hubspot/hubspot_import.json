@@ -33,6 +33,17 @@
                 ]
               },
               "requiredField": true
+            },
+            {
+              "fieldLabel": "Testmodus (nur erste 5 Kontakte)",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  { "option": "Nein" },
+                  { "option": "Ja" }
+                ]
+              },
+              "requiredField": false
             }
           ]
         },
@@ -63,7 +74,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================\n// SCHRITT: Metadaten auslesen + Kontakte mappen\n// ============================================================\n// Leadtyp + Listen-ID kommen aus dem Upload-Formular.\n// Alle Excel-Zeilen sind Kontaktdaten (keine Metadaten-Zeilen).\n// ============================================================\n\nconst allItems = items.map(i => i.json);\n\n// --- Metadaten aus Formular ---\nconst leadtypValue = $('Upload Formular').first().json['Leadtyp'] || 'Unternehmerboard';\nconst listId = $('Upload Formular').first().json['HubSpot Listen-ID'] || '';\n\n// --- Segmentname (optional, aus erster Zeile wenn vorhanden) ---\nconst segmentnameValue = '';\n\n// --- Alle Zeilen sind Kontaktdaten ---\nconst contactRows = allItems;\n\n// branchen: HubSpot akzeptiert nur diese Werte (inkl. Tippfehler \"Elektrontechnik\")\nconst VALID_BRANCHEN = ['Werbung/Design','Coaching','Personal','Health','Logistik','B2B Services','Handwerk','Elektrontechnik','Immobilien','Maschinenbau','Handel','Chemie','Consulting','Bau','Architektur-Design','Software','Produktion'];\nconst BRANCHEN_ALIASES = {\n  'elektrotechnik':   'Elektrontechnik',\n  'elektro':          'Elektrontechnik',\n  'it':               'Software',\n  'informatik':       'Software',\n  'architektur':      'Architektur-Design',\n  'werbung':          'Werbung/Design',\n  'design':           'Werbung/Design',\n  'hr':               'Personal',\n  'gesundheit':       'Health',\n  'transport':        'Logistik',\n  'dienstleistungen': 'B2B Services',\n};\nfunction mapBranchen(raw) {\n  const v = (raw || '').toString().trim();\n  if (!v) return '';\n  if (VALID_BRANCHEN.includes(v)) return v;\n  const lower = v.toLowerCase();\n  const ciMatch = VALID_BRANCHEN.find(b => b.toLowerCase() === lower);\n  if (ciMatch) return ciMatch;\n  return BRANCHEN_ALIASES[lower] || '';\n}\n\n// numemployees: HubSpot akzeptiert nur diese Werte\nconst VALID_EMPLOYEES = ['1-5','5-25','25-50','50-100','100-500','500-1000','1000+'];\nfunction mapNumEmployees(raw) {\n  const v = (raw || '').toString().trim();\n  if (!v) return '';\n  if (VALID_EMPLOYEES.includes(v)) return v;\n  const match = v.match(/(\\d+)/);\n  if (!match) return '';\n  const n = parseInt(match[1], 10);\n  if (n <= 5)   return '1-5';\n  if (n <= 25)  return '5-25';\n  if (n <= 50)  return '25-50';\n  if (n <= 100) return '50-100';\n  if (n <= 500) return '100-500';\n  if (n <= 1000) return '500-1000';\n  return '1000+';\n}\n\nconst result = [];\n\nfor (const row of contactRows) {\n  // Nur Zeilen mit gültiger E-Mail verarbeiten\n  const email = (row['email'] || '').toString().trim();\n  if (!email) continue;\n\n  // Telefonnummer bereinigen: führendes ' entfernen (Excel-Artefakt)\n  let phone = (row['phone'] || '').toString().trim();\n  if (phone.startsWith(\"'\")) phone = phone.slice(1);\n\n  const branchenVal     = mapBranchen(row['industry']);\n  const numemployeesVal = mapNumEmployees(row['companySize']);\n\n  const mapped = {\n    // ── HubSpot Standard-Felder ──────────────────────────────\n    email:           email,\n    firstname:       (row['firstName'] || '').toString().trim(),\n    lastname:        (row['lastName']  || '').toString().trim(),\n    phone:           phone,\n    hs_linkedin_url: (row['linkedinUrl']   || '').toString().trim(),\n    jobtitle:        (row['jobTitle']      || '').toString().trim(),\n    company:         (row['companyName']    || '').toString().trim(),\n    website:         (row['companyWebsite'] || row['companyDomain'] || '').toString().trim(),\n    // ── Custom-Property ─────────────────────────────────────\n    leadtyp:         leadtypValue,\n    // ── Interne Felder für Rückschreiben der HubSpot-ID ──────\n    _segmentname:    segmentnameValue,\n    _source_id:      (row['_id'] || '').toString().trim(),\n    _listId:         listId,\n  };\n  // Enum-Felder nur setzen wenn gemappt (leerer Wert → HubSpot-Validierungsfehler)\n  if (branchenVal)     mapped.branchen     = branchenVal;\n  if (numemployeesVal) mapped.numemployees = numemployeesVal;\n\n  result.push({ json: mapped });\n}\n\nreturn result;\n"
+        "jsCode": "// ============================================================\n// SCHRITT: Metadaten auslesen + Kontakte mappen\n// ============================================================\nconst allItems = items.map(i => i.json);\n\n// --- Metadaten aus Formular ---\nconst leadtypValue = $('Upload Formular').first().json['Leadtyp'] || 'Unternehmerboard';\nconst listId       = $('Upload Formular').first().json['HubSpot Listen-ID'] || '';\nconst testmodus    = ($('Upload Formular').first().json['Testmodus (nur erste 5 Kontakte)'] || 'Nein') === 'Ja';\n\n// branchen: HubSpot akzeptiert nur diese Werte (inkl. Tippfehler \"Elektrontechnik\")\nconst VALID_BRANCHEN = ['Werbung/Design','Coaching','Personal','Health','Logistik','B2B Services','Handwerk','Elektrontechnik','Immobilien','Maschinenbau','Handel','Chemie','Consulting','Bau','Architektur-Design','Software','Produktion'];\nconst BRANCHEN_ALIASES = {\n  'elektrotechnik':   'Elektrontechnik',\n  'elektro':          'Elektrontechnik',\n  'it':               'Software',\n  'informatik':       'Software',\n  'architektur':      'Architektur-Design',\n  'werbung':          'Werbung/Design',\n  'design':           'Werbung/Design',\n  'hr':               'Personal',\n  'gesundheit':       'Health',\n  'transport':        'Logistik',\n  'dienstleistungen': 'B2B Services',\n};\nfunction mapBranchen(raw) {\n  const v = (raw || '').toString().trim();\n  if (!v) return '';\n  if (VALID_BRANCHEN.includes(v)) return v;\n  const lower = v.toLowerCase();\n  const ciMatch = VALID_BRANCHEN.find(b => b.toLowerCase() === lower);\n  if (ciMatch) return ciMatch;\n  return BRANCHEN_ALIASES[lower] || '';\n}\n\n// numemployees: HubSpot akzeptiert nur diese Werte\nconst VALID_EMPLOYEES = ['1-5','5-25','25-50','50-100','100-500','500-1000','1000+'];\nfunction mapNumEmployees(raw) {\n  const v = (raw || '').toString().trim();\n  if (!v) return '';\n  if (VALID_EMPLOYEES.includes(v)) return v;\n  const match = v.match(/(\\d+)/);\n  if (!match) return '';\n  const n = parseInt(match[1], 10);\n  if (n <= 5)   return '1-5';\n  if (n <= 25)  return '5-25';\n  if (n <= 50)  return '25-50';\n  if (n <= 100) return '50-100';\n  if (n <= 500) return '100-500';\n  if (n <= 1000) return '500-1000';\n  return '1000+';\n}\n\nconst result = [];\n\nfor (const row of allItems) {\n  const email = (row['email'] || '').toString().trim();\n  if (!email) continue;\n\n  let phone = (row['phone'] || '').toString().trim();\n  if (phone.startsWith(\"'\")) phone = phone.slice(1);\n\n  const branchenVal     = mapBranchen(row['industry']);\n  const numemployeesVal = mapNumEmployees(row['companySize']);\n\n  const mapped = {\n    email:           email,\n    firstname:       (row['firstName']     || '').toString().trim(),\n    lastname:        (row['lastName']      || '').toString().trim(),\n    phone:           phone,\n    hs_linkedin_url: (row['linkedinUrl']   || '').toString().trim(),\n    jobtitle:        (row['jobTitle']      || '').toString().trim(),\n    company:         (row['companyName']   || '').toString().trim(),\n    website:         (row['companyWebsite'] || row['website'] || row['companyDomain'] || '').toString().trim(),\n    leadtyp:         leadtypValue,\n    _listId:         listId,\n  };\n  if (branchenVal)     mapped.branchen     = branchenVal;\n  if (numemployeesVal) mapped.numemployees = numemployeesVal;\n\n  result.push({ json: mapped });\n\n  if (testmodus && result.length >= 5) break;\n}\n\nreturn result;\n"
       },
       "id": "fd07d6f2-356f-4161-a606-01ee0d908bb4",
       "name": "Daten mappen",
@@ -149,8 +160,18 @@
     },
     {
       "parameters": {
+        "jsCode": "// Extrahiert die HubSpot-Kontakt-ID aus dem Upsert-Output.\n// Der n8n HubSpot-v2-Node gibt Properties geflattened zurück;\n// die Record-ID steckt in hs_object_id oder vid.\nconst raw = $json;\nconst listId = $('Upload Formular').first().json['HubSpot Listen-ID'] || '';\n\n// Alle bekannten ID-Felder durchprobieren\nconst id = (raw['hs_object_id'] || raw['vid'] || '').toString().trim();\n\nif (!id) {\n  // Fehler mit Debug-Info: welche Felder kamen zurück?\n  const keys = Object.keys(raw).slice(0, 20).join(', ');\n  throw new Error(\n    'FEHLENDE HubSpot-ID für ' + (raw['email'] || '?') +\n    '. Verfügbare Felder (erste 20): ' + keys\n  );\n}\n\nreturn [{\n  json: {\n    _contactId: id,\n    _listId:    listId,\n    _email:     raw['email'] || '',\n  }\n}];\n"
+      },
+      "id": "e1f2a3b4-5c6d-4000-8000-99aabbccddee",
+      "name": "Code: ID extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, -400]
+    },
+    {
+      "parameters": {
         "method": "PUT",
-        "url": "=https://api.hubapi.com/crm/v3/lists/{{ $('Upload Formular').first().json['HubSpot Listen-ID'] }}/memberships/add",
+        "url": "=https://api.hubapi.com/crm/v3/lists/{{ $json._listId }}/memberships/add",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "hubspotAppToken",
         "sendHeaders": true,
@@ -164,14 +185,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify([String($json.hs_object_id || $json.vid || '')]) }}",
+        "jsonBody": "={{ JSON.stringify([String($json._contactId)]) }}",
         "options": {}
       },
       "id": "be78d48c-feaf-40f4-b892-d443cfc128b6",
       "name": "HTTP Request",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [820, -400],
+      "position": [960, -400],
       "credentials": {
         "hubspotAppToken": {
           "id": "zGX2k1SKubP15OOY",
@@ -189,7 +210,7 @@
       "name": "Warte: Rate Limit",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [820, -240],
+      "position": [960, -240],
       "webhookId": "b9c8d7e6-f5a4-4000-8000-aabbccddeeff"
     },
     {
@@ -201,17 +222,17 @@
       "name": "Alle IDs sammeln",
       "type": "n8n-nodes-base.aggregate",
       "typeVersion": 1,
-      "position": [1040, -400]
+      "position": [1160, -400]
     },
     {
       "parameters": {
-        "jsCode": "// ============================================================\n// HubSpot IDs als CSV ausgeben (für Rückschreiben in Spalte DE)\n// ============================================================\n// Gibt eine CSV-Datei aus mit: email, hubspotId\n// Diese kann genutzt werden, um manuell oder per VLOOKUP\n// die IDs in die Originaldatei (Spalte DE / hubspotId) einzutragen.\n// ============================================================\n\nconst allData = items[0].json.data;\n\nif (!Array.isArray(allData)) {\n  return [{ json: { info: 'Keine Daten zum Exportieren' } }];\n}\n\nlet csvLines = ['email,hubspotId'];\n\nfor (const row of allData) {\n  const email = (row.email || '').replace(/,/g, '');\n  const hsId  = (row.id    || '').toString();\n  csvLines.push(`${email},${hsId}`);\n}\n\nreturn [{\n  json: {\n    totalImported: csvLines.length - 1,\n    message: `${csvLines.length - 1} Kontakte erfolgreich importiert`,\n  },\n  binary: {\n    data: {\n      data: Buffer.from(csvLines.join('\\n')).toString('base64'),\n      mimeType: 'text/csv',\n      fileExtension: 'csv',\n      fileName: 'hubspot_ids_rueckschreiben.csv',\n    }\n  }\n}];\n"
+        "jsCode": "const allData = items[0].json.data;\n\nif (!Array.isArray(allData)) {\n  return [{ json: { info: 'Keine Daten zum Exportieren' } }];\n}\n\nlet csvLines = ['email,hubspotId'];\n\nfor (const row of allData) {\n  const email = (row.email || '').replace(/,/g, '');\n  const hsId  = (row.hs_object_id || row.vid || row.id || '').toString();\n  csvLines.push(`${email},${hsId}`);\n}\n\nreturn [{\n  json: {\n    totalImported: csvLines.length - 1,\n    message: `${csvLines.length - 1} Kontakte erfolgreich importiert`,\n  },\n  binary: {\n    data: {\n      data: Buffer.from(csvLines.join('\\n')).toString('base64'),\n      mimeType: 'text/csv',\n      fileExtension: 'csv',\n      fileName: 'hubspot_ids_rueckschreiben.csv',\n    }\n  }\n}];\n"
       },
       "id": "a232c781-59e7-4b76-a27a-c7f61dff6c73",
       "name": "ID-Export vorbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1264, -400]
+      "position": [1384, -400]
     },
     {
       "parameters": {
@@ -230,7 +251,7 @@
       },
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
-      "position": [1488, -400],
+      "position": [1608, -400],
       "id": "364510f7-6757-4f96-abed-307cb6aed966",
       "name": "Send a message",
       "webhookId": "a742fd01-9baa-4b1e-b782-ed8b2b7c790c",
@@ -266,8 +287,13 @@
     },
     "Loop: List Add": {
       "main": [
-        [{"node": "HTTP Request", "type": "main", "index": 0}],
+        [{"node": "Code: ID extrahieren", "type": "main", "index": 0}],
         [{"node": "Alle IDs sammeln", "type": "main", "index": 0}]
+      ]
+    },
+    "Code: ID extrahieren": {
+      "main": [
+        [{"node": "HTTP Request", "type": "main", "index": 0}]
       ]
     },
     "HTTP Request": {
