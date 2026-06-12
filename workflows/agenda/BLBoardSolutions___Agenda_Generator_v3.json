@@ -1,5 +1,5 @@
 {
-  "name": "BLBoardSolutions – Agenda Generator v3",
+  "name": "BLBoardSolutions – Agenda Generator v3.1 (Claude)",
   "nodes": [
     {
       "parameters": {
@@ -11,13 +11,13 @@
           ]
         }
       },
-      "id": "b237939c-c9d6-4cd2-a060-bbbda329846a",
+      "id": "c3677b32-08e6-4963-a817-504ba2833999",
       "name": "Schedule: Täglich 08:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        9232,
-        4528
+        12480,
+        5920
       ]
     },
     {
@@ -49,13 +49,13 @@
         },
         "options": {}
       },
-      "id": "6c04f279-3b2d-4958-803e-0df43de472cb",
+      "id": "05175d3c-7a87-4ddd-acb7-2328a54d2b20",
       "name": "Notion: Offene Termine",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        9456,
-        4528
+        12704,
+        5920
       ],
       "credentials": {
         "notionApi": {
@@ -78,13 +78,13 @@
         },
         "options": {}
       },
-      "id": "a1cfdfee-8273-4aef-b0ff-417ee68a7256",
+      "id": "489b4400-911a-45a0-ad0b-cec42b2e6b7f",
       "name": "Set: page_id (Schedule)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        9680,
-        4528
+        12928,
+        5920
       ]
     },
     {
@@ -94,13 +94,13 @@
         "authentication": "headerAuth",
         "options": {}
       },
-      "id": "fdb443b0-7936-4bfe-a48e-64ce5205ea37",
+      "id": "8e43fe6f-f6cf-4b45-ab6f-e33c70e88bd4",
       "name": "Webhook: Agenda anfordern",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        9232,
-        4784
+        12480,
+        6176
       ],
       "webhookId": "agenda-generieren",
       "credentials": {
@@ -124,13 +124,13 @@
         },
         "options": {}
       },
-      "id": "461f9e14-d1fe-45b7-a4d3-9b84eb980cc5",
+      "id": "113ee5f6-c2f5-4f2a-a108-47da67f9c5a9",
       "name": "Set: page_id (Webhook)",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        9456,
-        4784
+        12704,
+        6176
       ]
     },
     {
@@ -144,13 +144,13 @@
         },
         "simple": false
       },
-      "id": "9b586f68-0c0f-4fc6-a1b5-e6765a5f8dbd",
+      "id": "b8ca7a40-aa1c-4aa1-8a1a-0e5e6ce2f8d7",
       "name": "Notion: Termin laden",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        9680,
-        4784
+        12928,
+        6176
       ],
       "credentials": {
         "notionApi": {
@@ -163,13 +163,13 @@
       "parameters": {
         "jsCode": "\n// Node 4 – Termin extrahieren (roher Notion-Response, simple=false).\nconst page  = $input.first().json;\nconst props = page.properties || {};\n\nfunction relationIds(prop) {\n  if (!prop) return [];\n  if (Array.isArray(prop.relation)) return prop.relation.map(r => (r && r.id) || r).filter(Boolean);\n  if (Array.isArray(prop))          return prop.map(r => (r && r.id) || r).filter(Boolean);\n  return [];\n}\nfunction findProp(props, regex) {\n  if (props[regex.source]) return props[regex.source];\n  const key = Object.keys(props).find(k => regex.test(k));\n  return key ? props[key] : null;\n}\n\nfunction getText(prop) {\n  if (!prop) return '';\n  if (prop.type === 'rich_text') return (prop.rich_text || []).map(r => r.plain_text).join('');\n  if (prop.type === 'title')     return (prop.title || []).map(r => r.plain_text).join('');\n  if (prop.type === 'url')       return prop.url || '';\n  if (prop.type === 'email')     return prop.email || '';\n  if (prop.type === 'checkbox')  return !!prop.checkbox;\n  if (prop.type === 'select')    return prop.select?.name || '';\n  return '';\n}\nfunction formatTermin(dateObj) {\n  if (!dateObj?.start) return '';\n  const start = new Date(dateObj.start);\n  const dateStr   = start.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });\n  const startTime = start.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit', hour12:false });\n  if (dateObj.end) {\n    const end = new Date(dateObj.end);\n    const endTime = end.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit', hour12:false });\n    return `${dateStr}, ${startTime} – ${endTime} Uhr`;\n  }\n  return `${dateStr}, ${startTime} Uhr`;\n}\n\nfunction parseTermine(raw) {\n  if (!raw) return [];\n  return raw.split('\\n').map(l => l.trim()).filter(Boolean).map((line) => {\n    const [datum, ort] = line.split('|').map(s => s.trim());\n    return { termin_datum: datum, termin_ort_oder_leer: ort || '______________________' };\n  });\n}\n\nconst datumProp  = props['Datum']?.date;\nconst dateiDatum = datumProp?.start ? new Date(datumProp.start).toISOString().slice(0,10) : 'unbekannt';\n\n// DB Gruppen Relation -> erste Gruppen-Page-ID (tolerant; leer => IF-Node fängt es ab)\nconst gruppenId = relationIds(findProp(props, /db\\s*gruppe|gruppe|board/i))[0] || null;\n\nreturn [{\n  json: {\n    page_id:          page.id,\n    gruppen_id:       gruppenId,\n    termin:           formatTermin(datumProp),\n    datei_datum:      dateiDatum,\n    ort_name:         getText(props['Ort Name']),\n    ort_adresse:      getText(props['Ort Adresse']),\n    gast_name:        getText(props['Gast Name']),\n    gast_web:         getText(props['Gast Web']),\n    gastvortrag_name: getText(props['Gastvortrag-Name']),\n    gastvortrag_web:  getText(props['Gastvortrag Web']),\n    hotseat1_name:    getText(props['Hotseat1-Name']),\n    hotseat1_thema:   getText(props['Hotseat1-Thema']),\n    hotseat2_name:    getText(props['Hotseat2-Name']),\n    hotseat2_thema:   getText(props['Hotseat2-Thema']),\n    themenvorschau:   getText(props['Themenvorschau']),\n    impulsvortrag:    getText(props['Impulsvortrag']),\n    naechste_termine: parseTermine(getText(props['Nächste Termine'])),\n    output_path:      `/opt/scripts/output/AGD_${dateiDatum}_Boardmeeting.docx`,\n  }\n}];\n"
       },
-      "id": "c719a632-e7b6-4c50-b488-bce442f9c6a4",
+      "id": "ef9dbc29-fd94-4ed8-837d-db6d1fdd79f6",
       "name": "Code: Termin extrahieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        9904,
-        4784
+        13152,
+        6176
       ]
     },
     {
@@ -196,26 +196,26 @@
         },
         "options": {}
       },
-      "id": "0e0175bd-c808-4bd1-a408-476bd2472161",
+      "id": "e168dba6-4cd2-4c95-b2f3-e193767e09c0",
       "name": "IF: Gruppe vorhanden?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        10112,
-        4784
+        13360,
+        6176
       ]
     },
     {
       "parameters": {
         "errorMessage": "Kein Board zugeordnet – bitte Gruppe in Board-Termine verknüpfen"
       },
-      "id": "2ba27406-819b-4ac6-9096-e949b928ee05",
+      "id": "f29d988b-3575-433b-8cfe-94d01f2bdc12",
       "name": "Stop: Kein Board",
       "type": "n8n-nodes-base.stopAndError",
       "typeVersion": 1,
       "position": [
-        10336,
-        4944
+        13584,
+        6336
       ]
     },
     {
@@ -229,13 +229,13 @@
         },
         "simple": false
       },
-      "id": "5ec23e97-3885-4415-927f-3d9420396831",
+      "id": "b4f9888d-4e6a-43cb-9fae-dac5b07e6f6d",
       "name": "Notion: Gruppe laden",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        10336,
-        4704
+        13584,
+        6096
       ],
       "credentials": {
         "notionApi": {
@@ -248,13 +248,13 @@
       "parameters": {
         "jsCode": "\n// Node 7 – Kunden-IDs extrahieren: gibt MEHRERE Items zurück (1 pro Kunde).\n// Hinweis Pagination: Notion liefert max. 25 Relations pro Page; bei größeren\n// Gruppen über GET /v1/pages/{id}/properties/{prop_id} nachladen.\nconst gruppePage = $input.first().json;\nconst props = gruppePage.properties || {};\n\nfunction relationIds(prop) {\n  if (!prop) return [];\n  if (Array.isArray(prop.relation)) return prop.relation.map(r => (r && r.id) || r).filter(Boolean);\n  if (Array.isArray(prop))          return prop.map(r => (r && r.id) || r).filter(Boolean);\n  return [];\n}\nfunction findProp(props, regex) {\n  if (props[regex.source]) return props[regex.source];\n  const key = Object.keys(props).find(k => regex.test(k));\n  return key ? props[key] : null;\n}\n\nconst kundenIds = relationIds(findProp(props, /db\\s*kunde|kunde|mitglied/i));\nconst terminDaten = $('Code: Termin extrahieren').first().json;\n// NEU:\nconst gruppenName = \n  // Erst Title-Feld versuchen\n  gruppePage.properties?.['Name']?.title?.map(r => r.plain_text).join('') ||\n  // Dann Confluence Space Key als Fallback\n  gruppePage.properties?.['Confluence Space Key']?.rich_text?.map(r => r.plain_text).join('') ||\n  // Letzter Fallback\n  'Unbekannte Gruppe';\n\nif (kundenIds.length === 0) {\n  return [{ json: { ...terminDaten, kunden_id: null, alle_kunden_ids: [], gruppen_name: gruppenName } }];\n}\n\nreturn kundenIds.map(id => ({\n  json: {\n    ...terminDaten,\n    kunden_id: id,\n    alle_kunden_ids: kundenIds,\n    gruppen_name: gruppenName,\n  }\n}));\n"
       },
-      "id": "be8d5040-8952-4a3a-bf35-c8acc8142af3",
+      "id": "0f40c09b-d657-498e-92f8-694996782ad2",
       "name": "Code: Kunden-IDs extrahieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        10560,
-        4704
+        13808,
+        6096
       ]
     },
     {
@@ -273,13 +273,13 @@
         },
         "options": {}
       },
-      "id": "efaa4e85-ecaa-4ced-b66a-6294dad24d9d",
+      "id": "f7526d5f-0834-4614-94af-0c4d7b1375bf",
       "name": "HTTP: Kunden laden",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        10784,
-        4704
+        14032,
+        6096
       ],
       "credentials": {
         "notionApi": {
@@ -290,15 +290,15 @@
     },
     {
       "parameters": {
-        "jsCode": "// Node 9 – Payload aufbereiten\nconst alleItems = $input.all();\n\nfunction getText(prop) {\n  if (!prop) return '';\n  if (prop.type === 'rich_text') return (prop.rich_text || []).map(r => r.plain_text).join('');\n  if (prop.type === 'title')     return (prop.title || []).map(r => r.plain_text).join('');\n  if (prop.type === 'url')       return prop.url || '';\n  if (prop.type === 'email')     return prop.email || '';\n  if (prop.type === 'checkbox')  return !!prop.checkbox;\n  if (prop.type === 'select')    return prop.select?.name || '';\n  return '';\n}\n\n// Mitglieder aufbereiten\nconst mitglieder = alleItems\n  .map(item => item.json.properties)\n  .filter(Boolean)\n  .map(props => ({\n    name:  getText(props['Name']),\n    firma: getText(props['Firma']),\n    web:   getText(props['Web']),\n    aktiv: getText(props['Aktiv']),\n  }))\n  .filter(m => m.name && m.aktiv !== false)\n  .map(({ name, firma, web }, index) => ({\n    name, firma, web,\n    ist_erstes: index === 0,\n  }));\n\n// Termin-Daten und Gruppenname\nconst data = $('Code: Termin extrahieren').first().json;\n// NEU:\n// gruppen_name steckt in den Items vom HTTP: Kunden laden Node\n// dort wurde es via ...terminDaten weitergegeben\nconst gruppenName = $input.all()\n  .map(i => i.json.gruppen_name)\n  .find(n => n && n !== 'Unbekannte Gruppe') || \n  $('Code: Kunden-IDs extrahieren').first().json.gruppen_name ||\n  'Unbekannte_Gruppe';\nconst dateiName = `AGD_${data.datei_datum}_${gruppenName.replace(/\\s+/g, '_')}_Boardmeeting.docx`;\n\n// TOPs aufbauen\nconst tops = [];\n\ntops.push({ titel: 'Begrüßung & Agenda', zeit: '10min', beschreibung: '', untertitel: '', sub_items: [] });\n\nif (data.gastvortrag_name) {\n  tops.push({ titel: 'Impulsvortrag', zeit: '', beschreibung: data.impulsvortrag || '', untertitel: '', sub_items: [] });\n}\n\nif (data.hotseat1_name || data.hotseat2_name) {\n  const subItems = [];\n  if (data.hotseat1_name) subItems.push({ nr: 1, fallgeber: data.hotseat1_name, sub_zeit: '20min', sub_beschreibung: data.hotseat1_thema || '' });\n  if (data.hotseat2_name) subItems.push({ nr: 2, fallgeber: data.hotseat2_name, sub_zeit: '20min', sub_beschreibung: data.hotseat2_thema || '' });\n  tops.push({ titel: 'Vorstellung neue Themen', zeit: '', beschreibung: '', untertitel: 'was ist geplant, was soll umgesetzt werden, wo wird Hilfe benötigt', sub_items: subItems });\n}\n\ntops.push({ titel: 'Aktuelle Themen / Offene Fragen', zeit: '30min', beschreibung: '', untertitel: '', sub_items: [] });\ntops.push({ titel: 'Themen Vorschau nächste Sitzung', zeit: '', beschreibung: data.themenvorschau || '', untertitel: '', sub_items: [] });\n\nconst payload = {\n  termin:           data.termin,\n  ort_name:         data.ort_name,\n  ort_adresse:      data.ort_adresse,\n  mitglieder,\n  gast_name:        data.gast_name,\n  gast_web:         data.gast_web,\n  gastvortrag_name: data.gastvortrag_name,\n  gastvortrag_web:  data.gastvortrag_web,\n  tops,\n  themenvorschau:   '',\n  naechste_termine: data.naechste_termine || [],\n};\n\nreturn [{\n  json: {\n    page_id:        data.page_id,\n    datei_datum:    data.datei_datum,\n    gruppen_name:   gruppenName,\n    datei_name:     dateiName,\n    output_path:    `/root/local-files/${dateiName}`,\n    container_path: `/files/${dateiName}`,\n    agenda_datum:   new Date().toISOString().slice(0, 10),\n    payload,\n  }\n}];"
+        "jsCode": "// Node 9 – Payload aufbereiten\nconst alleItems = $input.all();\n\nfunction getText(prop) {\n  if (!prop) return '';\n  if (prop.type === 'rich_text') return (prop.rich_text || []).map(r => r.plain_text).join('');\n  if (prop.type === 'title')     return (prop.title || []).map(r => r.plain_text).join('');\n  if (prop.type === 'url')       return prop.url || '';\n  if (prop.type === 'email')     return prop.email || '';\n  if (prop.type === 'checkbox')  return !!prop.checkbox;\n  if (prop.type === 'select')    return prop.select?.name || '';\n  return '';\n}\n\n// Mitglieder aufbereiten\nconst mitglieder = alleItems\n  .map(item => item.json.properties)\n  .filter(Boolean)\n  .map(props => ({\n    name:  getText(props['Name']),\n    firma: getText(props['Firma']),\n    web:   getText(props['Web']),\n    aktiv: getText(props['Aktiv']),\n  }))\n  .filter(m => m.name && m.aktiv !== false)\n  .map(({ name, firma, web }, index) => ({\n    name, firma, web,\n    ist_erstes: index === 0,\n  }));\n\n// Termin-Daten und Gruppenname\n//const data = $('Code: Termin extrahieren').first().json;\nconst data = $('Code: Themen optimiert1').first().json;\n\n// NEU:\n// gruppen_name steckt in den Items vom HTTP: Kunden laden Node\n// dort wurde es via ...terminDaten weitergegeben\nconst gruppenName = $input.all()\n  .map(i => i.json.gruppen_name)\n  .find(n => n && n !== 'Unbekannte Gruppe') || \n  $('Code: Kunden-IDs extrahieren').first().json.gruppen_name ||\n  'Unbekannte_Gruppe';\nconst dateiName = `AGD_${data.datei_datum}_${gruppenName.replace(/\\s+/g, '_')}_Boardmeeting.docx`;\n\n// TOPs aufbauen\nconst tops = [];\n\ntops.push({ titel: 'Begrüßung & Agenda', zeit: '10min', beschreibung: '', untertitel: '', sub_items: [] });\n\nif (data.gastvortrag_name) {\n  tops.push({ titel: 'Impulsvortrag', zeit: '', beschreibung: data.impulsvortrag || '', untertitel: '', sub_items: [] });\n}\n\nif (data.hotseat1_name || data.hotseat2_name) {\n  const subItems = [];\n  if (data.hotseat1_name) subItems.push({ nr: 1, fallgeber: data.hotseat1_name, sub_zeit: '20min', sub_beschreibung: data.hotseat1_thema || '' });\n  if (data.hotseat2_name) subItems.push({ nr: 2, fallgeber: data.hotseat2_name, sub_zeit: '20min', sub_beschreibung: data.hotseat2_thema || '' });\n  tops.push({ titel: 'Vorstellung neue Themen', zeit: '', beschreibung: '', untertitel: 'was ist geplant, was soll umgesetzt werden, wo wird Hilfe benötigt', sub_items: subItems });\n}\n\ntops.push({ titel: 'Aktuelle Themen / Offene Fragen', zeit: '30min', beschreibung: '', untertitel: '', sub_items: [] });\ntops.push({ titel: 'Themen Vorschau nächste Sitzung', zeit: '', beschreibung: data.themenvorschau || '', untertitel: '', sub_items: [] });\n\nconst payload = {\n  termin:           data.termin,\n  ort_name:         data.ort_name,\n  ort_adresse:      data.ort_adresse,\n  mitglieder,\n  gast_name:        data.gast_name,\n  gast_web:         data.gast_web,\n  gastvortrag_name: data.gastvortrag_name,\n  gastvortrag_web:  data.gastvortrag_web,\n  tops,\n  themenvorschau:   '',\n  naechste_termine: data.naechste_termine || [],\n};\n\nreturn [{\n  json: {\n    page_id:        data.page_id,\n    datei_datum:    data.datei_datum,\n    gruppen_name:   gruppenName,\n    datei_name:     dateiName,\n    output_path:    `/root/local-files/${dateiName}`,\n    container_path: `/files/${dateiName}`,\n    agenda_datum:   new Date().toISOString().slice(0, 10),\n    payload,\n  }\n}];"
       },
-      "id": "f6cf006c-3dd5-4909-922f-1c7f7848c2a5",
+      "id": "d6872ac5-2a18-412c-a127-799d7439add3",
       "name": "Code: Payload aufbereiten",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        10992,
-        4704
+        14240,
+        6096
       ]
     },
     {
@@ -310,13 +310,13 @@
         "jsonBody": "={{ JSON.stringify({ data: $json.payload, output: $json.output_path }) }}",
         "options": {}
       },
-      "id": "51c0656a-dbd6-48ea-aaa0-491f2f997596",
+      "id": "39e66d6c-bc1f-4ff9-8218-140f3f0e21f1",
       "name": "HTTP: Agenda erzeugen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        11216,
-        4704
+        14464,
+        6096
       ]
     },
     {
@@ -339,13 +339,13 @@
         "jsonBody": "={{ JSON.stringify({ properties: { 'Agenda generiert': { checkbox: true }, 'Agenda generiert am': { date: { start: $('Code: Payload aufbereiten').first().json.agenda_datum } }, 'Agenda Link': { url: $json.path }, 'Status': { select: { name: 'Abgeschlossen' } } } }) }}",
         "options": {}
       },
-      "id": "88574140-a2c1-4c62-8c1c-7f2cf22c6f9c",
+      "id": "1713b929-a141-4e48-a86e-bf8fb7fbc2cb",
       "name": "HTTP: Notion aktualisieren",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        11440,
-        4704
+        14688,
+        6096
       ],
       "credentials": {
         "notionApi": {
@@ -361,13 +361,13 @@
         "width": 360,
         "color": 5
       },
-      "id": "288a72bd-5275-4caa-9d14-83624d060d7e",
+      "id": "3483f09c-7530-41da-b4a4-2f6e26580112",
       "name": "Hinweis 26",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        9232,
-        4336
+        12480,
+        5728
       ]
     },
     {
@@ -376,13 +376,13 @@
         "width": 380,
         "color": 3
       },
-      "id": "ac28c053-feba-41c9-8f0f-70d601ace29a",
+      "id": "3d2a28d6-ec14-4f77-a0bc-523a034645b2",
       "name": "Hinweis 451",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        10560,
-        4528
+        13808,
+        5920
       ]
     },
     {
@@ -391,13 +391,13 @@
         "width": 360,
         "color": 6
       },
-      "id": "de2e71fb-5a9e-49d5-916b-b475b64dacf8",
+      "id": "ca30d6f7-21c3-4a6a-be05-790ea4e52fdf",
       "name": "Hinweis 457",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        11216,
-        4528
+        14464,
+        5920
       ]
     },
     {
@@ -407,13 +407,13 @@
         "width": 300,
         "color": 7
       },
-      "id": "a5776c96-1357-44bc-9f2c-60cbc9ad717b",
+      "id": "7739af67-11a6-4bd1-8785-f36741e1e532",
       "name": "Hinweis 768",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        10336,
-        5088
+        13584,
+        6480
       ]
     },
     {
@@ -434,10 +434,10 @@
       "type": "n8n-nodes-base.microsoftOutlook",
       "typeVersion": 2,
       "position": [
-        11856,
-        4704
+        15104,
+        6096
       ],
-      "id": "47a05880-a6d7-4b94-b22c-b563ea3cc755",
+      "id": "5be6432d-012e-486c-a3ef-26c52126218f",
       "name": "Send a message",
       "webhookId": "48909493-de7a-4998-ac8b-a9ab175e0fcd",
       "credentials": {
@@ -449,16 +449,81 @@
     },
     {
       "parameters": {
-        "jsCode": "// Base64 vom Agenda-Server in Binary umwandeln\nconst base64 = $('HTTP: Agenda erzeugen').first().json.file_base64;\nconst filename = $('HTTP: Agenda erzeugen').first().json.filename;\n\n// gruppen_name aus dem Input lesen (kommt vom vorherigen Node)\nconst gruppen_name = $input.first().json.gruppen_name || 'Unbekannte_Gruppe';\nconst datei_datum = $input.first().json.datei_datum || '';\nconst termin = $input.first().json.termin || '';\nconst page_id = $input.first().json.page_id || '';\n\nconst binary = {\n  attachment: {\n    data: base64,\n    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n    fileName: filename,\n  }\n};\n\nreturn [{\n  json: {\n    gruppen_name,\n    datei_datum,\n    termin,\n    page_id,\n  },\n  binary\n}];"
+        "jsCode": "// Anhang aus der Agenda-Server-Antwort bauen – tolerant gegenüber Feldnamen.\nconst resp = $('HTTP: Agenda erzeugen').first().json;\nconst base64 = resp.base64 || resp.file_base64 || resp.fileBase64;\nconst filename = resp.filename || (resp.path || '').split('/').pop() || 'Agenda.docx';\n\nif (!base64) {\n  throw new Error('Kein Base64 vom Agenda-Server erhalten. Antwortfelder: ' + Object.keys(resp).join(', '));\n}\n\nconst p = $('Code: Payload aufbereiten').first().json;\n\nreturn [{\n  json: {\n    gruppen_name: p.gruppen_name,\n    termin: (p.payload && p.payload.termin) || '',\n    page_id: p.page_id,\n    datei_datum: p.datei_datum,\n  },\n  binary: {\n    attachment: {\n      data: base64,\n      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n      fileName: filename,\n    }\n  }\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        11648,
-        4704
+        14896,
+        6096
       ],
-      "id": "efaece08-6f1b-4a78-81e2-0cb949f6500e",
+      "id": "86a10f4a-fb2c-4b47-abfb-241769e4aec4",
       "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 1024, system: 'Du bist Redakteur für Board-Meeting-Agenden. Formuliere die Themen kurz, präzise und einfach verständlich. Maximal zwei Sätze pro Thema, auf Deutsch. Verändere die fachliche Bedeutung nicht. Leere Themen bleiben leer. Antworte ausschließlich mit einem JSON-Objekt mit den Schlüsseln hotseat1_thema, hotseat2_thema, themenvorschau.', messages: [ { role: 'user', content: 'Optimiere diese Themen und gib nur JSON zurück:\\n' + JSON.stringify({ hotseat1_thema: $json.hotseat1_thema, hotseat2_thema: $json.hotseat2_thema, themenvorschau: $json.themenvorschau }) } ] }) }}",
+        "options": {}
+      },
+      "id": "51c47d13-5600-477b-830a-4d393ba07d19",
+      "name": "HTTP: Claude optimiert Themen1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        13216,
+        5760
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "0kF6wMtBXYudxUi0",
+          "name": "Anthropic account 8"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n// Optimierte Themen aus der Claude-Antwort übernehmen (Fallback: Originaltexte).\nconst orig = $('Code: Termin extrahieren').first().json;\nlet optimized = {};\ntry {\n  const resp = $input.first().json;\n  let text = '';\n  if (Array.isArray(resp.content)) text = resp.content.map(c => c.text || '').join('');\n  else if (typeof resp.text === 'string') text = resp.text;\n  const m = text.match(/\\{[\\s\\S]*\\}/);\n  if (m) optimized = JSON.parse(m[0]);\n} catch (e) {\n  optimized = {};\n}\nreturn [{\n  json: {\n    ...orig,\n    hotseat1_thema: optimized.hotseat1_thema || orig.hotseat1_thema,\n    hotseat2_thema: optimized.hotseat2_thema || orig.hotseat2_thema,\n    themenvorschau: optimized.themenvorschau || orig.themenvorschau,\n    themen_optimiert: !!(optimized && Object.keys(optimized).length),\n  }\n}];\n"
+      },
+      "id": "097ddf9c-2646-4c17-b8c9-9cbc84d0259f",
+      "name": "Code: Themen optimiert1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13440,
+        5760
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Themen-Optimierung (Claude)\nFormuliert Hotseat-Themen + Themenvorschau\nkurz/präzise/einfach (max. 2 Sätze) um.\nFehlersicher: bei Ausfall Originaltexte.\nCredential: Anthropic API (anthropicApi).",
+        "height": 170,
+        "width": 360,
+        "color": 2
+      },
+      "id": "ca6c287d-012b-4bd7-afda-865c85e47569",
+      "name": "Hinweis Claude1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        13184,
+        5552
+      ]
     }
   ],
   "pinData": {},
@@ -533,7 +598,7 @@
       "main": [
         [
           {
-            "node": "IF: Gruppe vorhanden?",
+            "node": "HTTP: Claude optimiert Themen1",
             "type": "main",
             "index": 0
           }
@@ -634,6 +699,28 @@
           }
         ]
       ]
+    },
+    "HTTP: Claude optimiert Themen1": {
+      "main": [
+        [
+          {
+            "node": "Code: Themen optimiert1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Themen optimiert1": {
+      "main": [
+        [
+          {
+            "node": "IF: Gruppe vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -641,7 +728,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "382fc71f-21da-4aad-8df4-237c3dfe2be8",
+  "versionId": "21e6c4cf-e458-4655-8378-f403c3cfb9c0",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
