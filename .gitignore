@@ -2,3 +2,6 @@
 *.env
 secrets/
 .DS_Store
+
+# Nested duplicate clone of this repo — ignore
+/n8n-workflows/

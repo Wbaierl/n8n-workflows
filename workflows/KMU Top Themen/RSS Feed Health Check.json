@@ -1,0 +1,353 @@
+{
+  "name": "RSS Feed Health Check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "bb50d549-b6b5-4c25-a91f-b50c5684f852",
+      "name": "Wöchentlich Montag 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1296,
+        112
+      ],
+      "notes": "Startet den Health-Check jeden Montag um 09:00 Uhr."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Feed-URL-Liste (identisch zum Hauptworkflow)\n// ====================================================================\n\nconst feeds = [\n  { name: 'Heise Online IT',                  url: 'https://www.heise.de/rss/heise-atom.xml' },\n  { name: 'Markt und Mittelstand',             url: 'https://www.marktundmittelstand.de/rss.xml' },\n  { name: 'Handelsblatt Unternehmen',          url: 'https://www.handelsblatt.com/contentexport/feed/unternehmen' },\n  { name: 'WirtschaftsWoche Unternehmen',      url: 'https://www.wiwo.de/contentexport/feed/rss/unternehmen' },\n  { name: 't3n Digital Business',              url: 'https://t3n.de/rss.xml' },\n  { name: 'Impulse Unternehmer-Magazin',       url: 'https://www.impulse.de/feed' },\n  { name: 'Gründerszene',                      url: 'https://www.gruenderszene.de/feed' },\n  { name: 'Deutsche Handwerks Zeitung',        url: 'https://www.deutsche-handwerks-zeitung.de/feed/' },\n  { name: 'FAZ Wirtschaft',                    url: 'https://www.faz.net/rss/aktuell/wirtschaft/' },\n  { name: 'Tagesschau Wirtschaft',             url: 'https://www.tagesschau.de/wirtschaft/index~rss2.xml' },\n  { name: 'Spiegel Wirtschaft',                url: 'https://www.spiegel.de/wirtschaft/index.rss' },\n  { name: 'Google News - KMU Mittelstand',     url: 'https://news.google.com/rss/search?q=KMU+Mittelstand+Deutschland&hl=de&gl=DE&ceid=DE:de' },\n  { name: 'Google News - Digitalisierung',     url: 'https://news.google.com/rss/search?q=Digitalisierung+Mittelstand&hl=de&gl=DE&ceid=DE:de' },\n  { name: 'Google News - Fachkräftemangel',    url: 'https://news.google.com/rss/search?q=Fachkr%C3%A4ftemangel+Mittelstand&hl=de&gl=DE&ceid=DE:de' },\n  { name: 'Google News - Maschinenbau Elektro',url: 'https://news.google.com/rss/search?q=Maschinenbau+OR+Elektrotechnik+Mittelstand&hl=de&gl=DE&ceid=DE:de' },\n  { name: 'Google News - Autohandel',          url: 'https://news.google.com/rss/search?q=Autohandel+OR+Kfz-Handel+Deutschland&hl=de&gl=DE&ceid=DE:de' }\n];\n\nreturn feeds.map(f => ({ json: f }));"
+      },
+      "id": "6e7c9a7f-848e-4e9a-9506-378083a7fe1c",
+      "name": "Feed-URLs laden",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1040,
+        112
+      ],
+      "notes": "Lädt alle 16 Feed-URLs, die auch im Hauptworkflow verwendet werden."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 20000
+        }
+      },
+      "id": "002b8c33-a9d1-4814-9aec-8206172b2ca4",
+      "name": "Feed abrufen (Health Check)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -784,
+        112
+      ],
+      "continueOnFail": true,
+      "onError": "continueRegularOutput",
+      "notes": "Ruft jeden Feed ab mit 20 s Timeout. Continue on Fail, damit alle Feeds geprüft werden."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Health-Check-Auswertung\n// Prüft jeden Feed auf: HTTP-Status, XML-Validität, Artikel-Anzahl\n// ====================================================================\n\nconst items = $input.all();\nconst datum = new Date().toISOString();\nconst ergebnisse = [];\nlet ausgefallen = 0;\nlet gesund = 0;\n\nfor (const item of items) {\n  const d = item.json;\n  const result = { name: d.name || '?', url: d.url || '?' };\n\n  // 1) HTTP-Fehler?\n  if (d.error || (d.statusCode && d.statusCode >= 400)) {\n    result.status = '❌ FEHLER';\n    result.details = d.error?.message || `HTTP ${d.statusCode}`;\n    result.gesund = false;\n    ausgefallen++;\n    ergebnisse.push(result);\n    continue;\n  }\n\n  // 2) Body vorhanden?\n  const body = typeof d.data === 'string' ? d.data\n             : typeof d.response === 'string' ? d.response\n             : typeof d.body === 'string' ? d.body : '';\n\n  if (!body || body.trim().length === 0) {\n    result.status = '❌ FEHLER';\n    result.details = 'Leere Antwort';\n    result.gesund = false;\n    ausgefallen++;\n    ergebnisse.push(result);\n    continue;\n  }\n\n  // 3) XML/RSS?\n  const isXml = body.includes('<rss') || body.includes('<feed') || body.includes('<?xml');\n  if (!isXml) {\n    result.status = '⚠️ WARNUNG';\n    result.details = 'Kein RSS/XML-Format (evtl. HTML-Fehlerseite)';\n    result.gesund = false;\n    ausgefallen++;\n    ergebnisse.push(result);\n    continue;\n  }\n\n  // 4) Artikel vorhanden?\n  const artikelCount = (body.match(/<item[\\s>]/gi) || []).length\n                     + (body.match(/<entry[\\s>]/gi) || []).length;\n\n  if (artikelCount === 0) {\n    result.status = '⚠️ WARNUNG';\n    result.details = 'XML valide, aber 0 Artikel gefunden';\n    result.gesund = false;\n    ausgefallen++;\n  } else {\n    result.status = '✅ OK';\n    result.details = `${artikelCount} Artikel gefunden`;\n    result.gesund = true;\n    gesund++;\n  }\n\n  ergebnisse.push(result);\n}\n\nconst bericht = {\n  datum: datum,\n  zusammenfassung: `${gesund} von ${ergebnisse.length} Feeds gesund, ${ausgefallen} mit Problemen`,\n  gesund: gesund,\n  ausgefallen: ausgefallen,\n  gesamt: ergebnisse.length,\n  alarm: ausgefallen > 0,\n  feeds: ergebnisse\n};\n\nconsole.log(`🏥 Health Check: ${bericht.zusammenfassung}`);\n\nreturn [{ json: bericht }];"
+      },
+      "id": "b81737c0-c9f8-4b94-87ee-9a656d15f40c",
+      "name": "Health-Check Auswertung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        112
+      ],
+      "notes": "Prüft jeden Feed auf HTTP-Status, XML-Validität und Artikel-Anzahl. Erstellt einen strukturierten Bericht."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.alarm }}",
+              "value2": true
+            }
+          ],
+          "combinator": "and",
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          }
+        },
+        "options": {}
+      },
+      "id": "248e32fc-672d-44a7-a1d8-d004b60e8295",
+      "name": "Ausfälle vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        112
+      ],
+      "notes": "Prüft ob es ausgefallene Feeds gibt. TRUE → E-Mail senden. FALSE → Nur Log speichern."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ====================================================================\n// Alarm-E-Mail vorbereiten\n// ====================================================================\n\nconst bericht = $input.first().json;\nconst ausgefallene = bericht.feeds.filter(f => !f.gesund);\n\nconst tabelle = ausgefallene.map(f =>\n  `<tr><td style=\"padding:8px;border:1px solid #ddd\">${f.name}</td>` +\n  `<td style=\"padding:8px;border:1px solid #ddd\">${f.status}</td>` +\n  `<td style=\"padding:8px;border:1px solid #ddd\">${f.details}</td>` +\n  `<td style=\"padding:8px;border:1px solid #ddd;font-size:11px\">${f.url}</td></tr>`\n).join('');\n\nconst html = `\n<h2>⚠️ RSS Feed Health Check – Ausfälle erkannt</h2>\n<p><strong>Datum:</strong> ${new Date(bericht.datum).toLocaleDateString('de-DE', { weekday:'long', year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' })}</p>\n<p><strong>Ergebnis:</strong> ${bericht.zusammenfassung}</p>\n<hr>\n<h3>Betroffene Feeds (${ausgefallene.length}):</h3>\n<table style=\"border-collapse:collapse;width:100%\">\n  <tr style=\"background:#f44336;color:white\">\n    <th style=\"padding:8px;border:1px solid #ddd\">Feed</th>\n    <th style=\"padding:8px;border:1px solid #ddd\">Status</th>\n    <th style=\"padding:8px;border:1px solid #ddd\">Details</th>\n    <th style=\"padding:8px;border:1px solid #ddd\">URL</th>\n  </tr>\n  ${tabelle}\n</table>\n<hr>\n<p style=\"color:#666;font-size:12px\">Automatischer Health Check – KMU News Workflow<br>\nBitte prüfe die betroffenen Feed-URLs und ersetze sie ggf. im Hauptworkflow.</p>\n`;\n\nreturn [{ json: {\n  subject: `⚠️ RSS Feed Alarm: ${ausgefallene.length} von ${bericht.gesamt} Feeds ausgefallen`,\n  html: html,\n  bericht: bericht\n}}];"
+      },
+      "id": "d3aa8da9-7351-4271-beda-d34347027eb5",
+      "name": "Alarm-E-Mail vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        -176
+      ],
+      "notes": "Erstellt eine formatierte HTML-E-Mail mit Tabelle der ausgefallenen Feeds."
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.html }}",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        176,
+        -176
+      ],
+      "id": "bce7c1d7-90e3-4733-8f55-d4bf66fa1bfd",
+      "name": "Send a message",
+      "webhookId": "311cef29-e8f1-46e4-bd88-58488ebc5af4",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const timestamp = new Date().toISOString().replace(/[:.+]/g, '-');\n// Ergibt z.B.: log_2026-05-04T18-33-05-217-02-00.txt\nconst logText = `[${timestamp}] Dein Log-Eintrag hier`;\n\n// Base64 kodieren\nconst logBase64 = Buffer.from(logText, 'utf-8').toString('base64');\n\nreturn [{\n  json: {\n    logText: logBase64  // Base64-String\n  }\n}];"
+      },
+      "id": "2cb6ab2f-f1b4-4b7d-b7a7-c27c55312690",
+      "name": "Log vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        208
+      ],
+      "notes": "Speichert den Health-Check-Bericht als JSON unter /tmp/feed_healthcheck_YYYY-MM-DD.json."
+    },
+    {
+      "parameters": {
+        "fileName": "={{\"log_\" + $now.toISO().replace(/[:.+]/g, '-') + \".txt\"}}",
+        "parentId": "01GSL5MYHTCBHSP5V7V5BY2T2FOBXJZ7KM",
+        "binaryData": true,
+        "binaryPropertyName": "file"
+      },
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        208
+      ],
+      "id": "1a452212-a36c-4af3-95d9-fe6941e9a664",
+      "name": "Upload a file",
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "logText",
+        "binaryPropertyName": "file",
+        "options": {
+          "fileName": "=={{\"log_\" + $now.toISO().replace(/[:.+]/g, '-') + \".txt\"}}",
+          "mimeType": "text/plain"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        544,
+        208
+      ],
+      "id": "5f0d297e-55a5-4b76-a897-889e62390c3c",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "operation": "search",
+        "query": "LogFiles"
+      },
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        576,
+        -48
+      ],
+      "id": "5b9777ff-a9bd-4afa-a2e0-3c962943a0a6",
+      "name": "Search a folder",
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      },
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Wöchentlich Montag 09:00": {
+      "main": [
+        [
+          {
+            "node": "Feed-URLs laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feed-URLs laden": {
+      "main": [
+        [
+          {
+            "node": "Feed abrufen (Health Check)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feed abrufen (Health Check)": {
+      "main": [
+        [
+          {
+            "node": "Health-Check Auswertung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Health-Check Auswertung": {
+      "main": [
+        [
+          {
+            "node": "Ausfälle vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ausfälle vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Alarm-E-Mail vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alarm-E-Mail vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Log vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "c0f9761d-28ee-4884-babd-074aa77f228e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "ZXAnkjsJ9895s6yM",
+  "tags": []
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=BLBoardSolutions Agenda Generator Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/scripts
+ExecStart=/usr/bin/node /opt/scripts/agenda-server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

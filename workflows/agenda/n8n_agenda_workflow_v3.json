@@ -1,0 +1,571 @@
+{
+  "name": "BLBoardSolutions – Agenda Generator v3",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule: Täglich 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -980,
+        60
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "37b47c76-2802-80b5-a1ee-cd278db35a83",
+          "mode": "id",
+          "cachedResultName": "DB Board-Termine"
+        },
+        "returnAll": true,
+        "simple": false,
+        "filterType": "json",
+        "filterJson": "={{ JSON.stringify({and:[{property:'Status',select:{equals:'Agenda bereit'}},{property:'Agenda generiert',checkbox:{equals:false}}]}) }}",
+        "options": {}
+      },
+      "id": "notion-offene",
+      "name": "Notion: Offene Termine",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -760,
+        60
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION_CREDENTIAL",
+          "name": "notion_api"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "page_id",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-page_id-schedule",
+      "name": "Set: page_id (Schedule)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -540,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agenda-generieren",
+        "authentication": "none",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook: Agenda anfordern",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -980,
+        320
+      ],
+      "webhookId": "agenda-generieren"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "page_id",
+              "type": "string",
+              "value": "={{ $json.body.page_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-page_id-webhook",
+      "name": "Set: page_id (Webhook)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -760,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.page_id }}",
+          "mode": "id"
+        },
+        "simple": false
+      },
+      "id": "notion-termin-laden",
+      "name": "Notion: Termin laden",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -540,
+        320
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION_CREDENTIAL",
+          "name": "notion_api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Node 4 – Termin extrahieren (roher Notion-Response, simple=false).\nconst page  = $input.first().json;\nconst props = page.properties || {};\n\nfunction relationIds(prop) {\n  if (!prop) return [];\n  if (Array.isArray(prop.relation)) return prop.relation.map(r => (r && r.id) || r).filter(Boolean);\n  if (Array.isArray(prop))          return prop.map(r => (r && r.id) || r).filter(Boolean);\n  return [];\n}\nfunction findProp(props, regex) {\n  if (props[regex.source]) return props[regex.source];\n  const key = Object.keys(props).find(k => regex.test(k));\n  return key ? props[key] : null;\n}\n\nfunction getText(prop) {\n  if (!prop) return '';\n  if (prop.type === 'rich_text') return (prop.rich_text || []).map(r => r.plain_text).join('');\n  if (prop.type === 'title')     return (prop.title || []).map(r => r.plain_text).join('');\n  if (prop.type === 'url')       return prop.url || '';\n  if (prop.type === 'email')     return prop.email || '';\n  if (prop.type === 'checkbox')  return !!prop.checkbox;\n  if (prop.type === 'select')    return prop.select?.name || '';\n  return '';\n}\nfunction formatTermin(dateObj) {\n  if (!dateObj?.start) return '';\n  const start = new Date(dateObj.start);\n  const dateStr   = start.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });\n  const startTime = start.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit', hour12:false });\n  if (dateObj.end) {\n    const end = new Date(dateObj.end);\n    const endTime = end.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit', hour12:false });\n    return `${dateStr}, ${startTime} – ${endTime} Uhr`;\n  }\n  return `${dateStr}, ${startTime} Uhr`;\n}\nfunction parseTermine(raw) {\n  if (!raw) return [];\n  return raw.split('\\n').map(l => l.trim()).filter(Boolean).map((line, i) => {\n    const [datum, ort] = line.split('|').map(s => s.trim());\n    return { termin_datum: `Termin ${i + 1}: ${datum}`, termin_ort_oder_leer: ort || '______________________' };\n  });\n}\n\nconst datumProp  = props['Datum']?.date;\nconst dateiDatum = datumProp?.start ? new Date(datumProp.start).toISOString().slice(0,10) : 'unbekannt';\n\n// DB Gruppen Relation -> erste Gruppen-Page-ID (tolerant; leer => IF-Node fängt es ab)\nconst gruppenId = relationIds(findProp(props, /db\\s*gruppe|gruppe|board/i))[0] || null;\n\nreturn [{\n  json: {\n    page_id:          page.id,\n    gruppen_id:       gruppenId,\n    termin:           formatTermin(datumProp),\n    datei_datum:      dateiDatum,\n    ort_name:         getText(props['Ort Name']),\n    ort_adresse:      getText(props['Ort Adresse']),\n    gast_name:        getText(props['Gast Name']),\n    gast_web:         getText(props['Gast Web']),\n    gastvortrag_name: getText(props['Gastvortrag-Name']),\n    gastvortrag_web:  getText(props['Gastvortrag Web']),\n    hotseat1_name:    getText(props['Hotseat1-Name']),\n    hotseat1_thema:   getText(props['Hotseat1-Thema']),\n    hotseat2_name:    getText(props['Hotseat2-Name']),\n    hotseat2_thema:   getText(props['Hotseat2-Thema']),\n    themenvorschau:   getText(props['Themenvorschau']),\n    naechste_termine: parseTermine(getText(props['Nächste Termine'])),\n    output_path:      `/opt/scripts/output/AGD_${dateiDatum}_Boardmeeting.docx`,\n  }\n}];\n"
+      },
+      "id": "code-termin-extrahieren",
+      "name": "Code: Termin extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c1",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              },
+              "leftValue": "={{ $json.gruppen_id }}",
+              "rightValue": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if-gruppe",
+      "name": "IF: Gruppe vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "errorMessage": "Kein Board zugeordnet – bitte Gruppe in Board-Termine verknüpfen"
+      },
+      "id": "stop-error",
+      "name": "Stop: Kein Board",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        120,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "get",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $json.gruppen_id }}",
+          "mode": "id"
+        },
+        "simple": false
+      },
+      "id": "notion-gruppe-laden",
+      "name": "Notion: Gruppe laden",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        120,
+        240
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION_CREDENTIAL",
+          "name": "notion_api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Node 7 – Kunden-IDs extrahieren: gibt MEHRERE Items zurück (1 pro Kunde).\n// Hinweis Pagination: Notion liefert max. 25 Relations pro Page; bei größeren\n// Gruppen über GET /v1/pages/{id}/properties/{prop_id} nachladen.\nconst gruppePage = $input.first().json;\nconst props = gruppePage.properties || {};\n\nfunction relationIds(prop) {\n  if (!prop) return [];\n  if (Array.isArray(prop.relation)) return prop.relation.map(r => (r && r.id) || r).filter(Boolean);\n  if (Array.isArray(prop))          return prop.map(r => (r && r.id) || r).filter(Boolean);\n  return [];\n}\nfunction findProp(props, regex) {\n  if (props[regex.source]) return props[regex.source];\n  const key = Object.keys(props).find(k => regex.test(k));\n  return key ? props[key] : null;\n}\n\nconst kundenIds = relationIds(findProp(props, /db\\s*kunde|kunde|mitglied/i));\nconst terminDaten = $('Code: Termin extrahieren').first().json;\n\nif (kundenIds.length === 0) {\n  // Keine Mitglieder: trotzdem ein Item, damit der Flow weiterläuft (mitglieder=[])\n  return [{ json: { ...terminDaten, kunden_id: null, alle_kunden_ids: [] } }];\n}\nreturn kundenIds.map(id => ({ json: { ...terminDaten, kunden_id: id, alle_kunden_ids: kundenIds } }));\n"
+      },
+      "id": "code-kunden-ids-extrahieren",
+      "name": "Code: Kunden-IDs extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.kunden_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-kunden-laden",
+      "name": "HTTP: Kunden laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        240
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION_CREDENTIAL",
+          "name": "notion_api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Node 9 – Payload aufbereiten: Mitglieder aus den geladenen Kunden-Pages bauen.\nconst alleItems = $input.all();\n\nfunction getText(prop) {\n  if (!prop) return '';\n  if (prop.type === 'rich_text') return (prop.rich_text || []).map(r => r.plain_text).join('');\n  if (prop.type === 'title')     return (prop.title || []).map(r => r.plain_text).join('');\n  if (prop.type === 'url')       return prop.url || '';\n  if (prop.type === 'email')     return prop.email || '';\n  if (prop.type === 'checkbox')  return !!prop.checkbox;\n  if (prop.type === 'select')    return prop.select?.name || '';\n  return '';\n}\n\n// Nur aktive Kunden (Aktiv != false). Items ohne properties (leere Gruppe) ignorieren.\nconst mitglieder = alleItems\n  .map(item => item.json.properties)\n  .filter(Boolean)\n  .map(props => ({\n    name:  getText(props['Name']),\n    firma: getText(props['Firma']),\n    web:   getText(props['Web']),\n    aktiv: getText(props['Aktiv']),\n  }))\n  .filter(m => m.name && m.aktiv !== false)\n  .map(({ name, firma, web }) => ({ name, firma, web }));\n\n// Termin-Daten NICHT aus den Kunden-Items lesen (die enthalten Kunden-Pages),\n// sondern direkt aus Node 4 holen.\nconst data = $('Code: Termin extrahieren').first().json;\n\nconst tops = [];\ntops.push({ titel: 'Begrüßung & Agenda', zeit: '10min', beschreibung: '', untertitel: '', sub_items: [] });\n\nif (data.hotseat1_name || data.hotseat2_name) {\n  const subItems = [];\n  if (data.hotseat1_name) subItems.push({ nr: subItems.length + 1, fallgeber: data.hotseat1_name, sub_zeit: '20min', sub_beschreibung: data.hotseat1_thema || '' });\n  if (data.hotseat2_name) subItems.push({ nr: subItems.length + 1, fallgeber: data.hotseat2_name, sub_zeit: '20min', sub_beschreibung: data.hotseat2_thema || '' });\n  tops.push({ titel: 'Vorstellung neue Themen', zeit: '', beschreibung: '', untertitel: 'was ist geplant, was soll umgesetzt werden, wo wird Hilfe benötigt', sub_items: subItems });\n}\n\ntops.push({ titel: 'Aktuelle Themen / Offene Fragen', zeit: '30min', beschreibung: '', untertitel: '', sub_items: [] });\n\nif (data.themenvorschau) {\n  tops.push({ titel: 'Themen Vorschau nächste Sitzung', zeit: '', beschreibung: '', untertitel: '', sub_items: [] });\n}\n\nconst payload = {\n  termin:           data.termin,\n  ort_name:         data.ort_name,\n  ort_adresse:      data.ort_adresse,\n  mitglieder,\n  gast_name:        data.gast_name,\n  gast_web:         data.gast_web,\n  gastvortrag_name: data.gastvortrag_name,\n  gastvortrag_web:  data.gastvortrag_web,\n  tops,\n  themenvorschau:   data.themenvorschau,\n  naechste_termine: data.naechste_termine || [],\n};\n\nreturn [{\n  json: {\n    page_id:      data.page_id,\n    datei_datum:  data.datei_datum,\n    output_path:  data.output_path,\n    agenda_datum: new Date().toISOString().slice(0, 10),\n    payload,\n  }\n}];\n"
+      },
+      "id": "code-payload-aufbereiten",
+      "name": "Code: Payload aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://172.17.0.1:3001/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ data: $json.payload, output: $json.output_path }) }}",
+        "options": {}
+      },
+      "id": "http-agenda",
+      "name": "HTTP: Agenda erzeugen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        240
+      ],
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $('Code: Payload aufbereiten').first().json.page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { 'Agenda generiert': { checkbox: true }, 'Agenda generiert am': { date: { start: $('Code: Payload aufbereiten').first().json.agenda_datum } }, 'Agenda Link': { url: $json.path }, 'Status': { select: { name: 'Abgeschlossen' } } } }) }}"
+      },
+      "id": "http-notion-aktualisieren",
+      "name": "HTTP: Notion aktualisieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        240
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REPLACE_NOTION_CREDENTIAL",
+          "name": "notion_api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Einstieg\nWebhook (primär): POST { page_id }.\nSchedule (deaktiviert): alle Termine mit\nStatus 'Agenda bereit' & nicht generiert.",
+        "height": 150,
+        "width": 360,
+        "color": 5
+      },
+      "id": "sticky-50026",
+      "name": "Hinweis 26",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -980,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Mitglieder-Kette\nTermin → DB Gruppen (1. Relation) → Gruppe laden\n→ DB Kunden (N Relations) → je 1 HTTP GET.\nNode 7 gibt N Items zurück → HTTP läuft N-mal.",
+        "height": 160,
+        "width": 380,
+        "color": 3
+      },
+      "id": "sticky-33451",
+      "name": "Hinweis 451",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        340,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## docx + Update\nPayload aufbereiten → HTTP an Agenda-Server\n(172.17.0.1:3001) → .docx. Danach Notion-Page\nvia PATCH aktualisieren (Link + Status).",
+        "height": 160,
+        "width": 360,
+        "color": 6
+      },
+      "id": "sticky-83457",
+      "name": "Hinweis 457",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Fehlerfall\nOhne verknüpfte Gruppe → Stop-Node\n'Kein Board zugeordnet'.",
+        "height": 120,
+        "width": 300,
+        "color": 7
+      },
+      "id": "sticky-1768",
+      "name": "Hinweis 768",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        620
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule: Täglich 08:00": {
+      "main": [
+        [
+          {
+            "node": "Notion: Offene Termine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Offene Termine": {
+      "main": [
+        [
+          {
+            "node": "Set: page_id (Schedule)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: page_id (Schedule)": {
+      "main": [
+        [
+          {
+            "node": "Notion: Termin laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook: Agenda anfordern": {
+      "main": [
+        [
+          {
+            "node": "Set: page_id (Webhook)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set: page_id (Webhook)": {
+      "main": [
+        [
+          {
+            "node": "Notion: Termin laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Termin laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Termin extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Termin extrahieren": {
+      "main": [
+        [
+          {
+            "node": "IF: Gruppe vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Gruppe vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Notion: Gruppe laden",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop: Kein Board",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Gruppe laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-IDs extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-IDs extrahieren": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Kunden laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Kunden laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Payload aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Payload aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Agenda erzeugen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Agenda erzeugen": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Notion aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "agenda-v3",
+  "meta": {},
+  "id": "agenda-generator-v3",
+  "tags": []
+}
