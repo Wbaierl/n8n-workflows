@@ -125,12 +125,38 @@
         1504,
         300
       ],
+      "continueOnFail": true,
       "credentials": {
         "httpBasicAuth": {
           "id": "OncAUjZtrqWedJug",
           "name": "Unnamed credential 2"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "page-found-check",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-seite-gefunden",
+      "name": "IF: Seite gefunden",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1504,
+        460
+      ]
     },
     {
       "parameters": {
@@ -266,6 +292,39 @@
         608,
         680
       ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "var items = $input.all();\nvar summary = items.map(function(i) {\n  return {\n    pageId:           i.json._pageId || '?',\n    confluencePageId: i.json._confluencePageId || 'LEER',\n    spaceKey:         i.json._spaceKey || 'LEER'\n  };\n});\nconsole.log('[DEBUG 1 - Kunden] Anzahl:', items.length);\nconsole.log('[DEBUG 1 - Kunden] Liste:', JSON.stringify(summary));\nreturn items;"
+      },
+      "id": "debug-kunden-norm",
+      "name": "Debug: Kunden-Normalisierung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 280]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "var items = $input.all();\nvar summary = items.map(function(i) {\n  return {\n    confluencePageId: i.json.confluencePageId || '?',\n    termineAnzahl:    (i.json.termine || []).length,\n    ersterTermin:     (i.json.termine || [])[0]?.datumStr || '-'\n  };\n});\nconsole.log('[DEBUG 2 - Empfaenger] Anzahl:', items.length);\nconsole.log('[DEBUG 2 - Empfaenger] Liste:', JSON.stringify(summary));\nreturn items;"
+      },
+      "id": "debug-empfaenger",
+      "name": "Debug: Empfänger-Liste",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1168, 400]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "var d = $input.item.json;\nvar loopItem = $('Loop: Ein Kunde pro Durchlauf').item.json;\nvar anfrageId = loopItem.confluencePageId || '?';\nvar info;\n\nif (d.error) {\n  // n8n continueOnFail-Struktur: { error: { message, status } }\n  var errMsg = d.error.message || '';\n  var httpStatus = d.error.status || '?';\n  var authorizedFalse = errMsg.indexOf('\"authorized\":false') !== -1;\n  var notFound = errMsg.indexOf('No content found') !== -1;\n  info = {\n    anfrage_confluencePageId: anfrageId,\n    status: 'FEHLER',\n    http_status: httpStatus,\n    authorized: authorizedFalse ? false : 'unbekannt',\n    seite_existiert: notFound ? 'NEIN (oder kein Zugriff)' : 'unbekannt',\n    fehlertext: errMsg.substring(0, 300)\n  };\n} else {\n  info = {\n    anfrage_confluencePageId: anfrageId,\n    status: 'OK',\n    antwort_id:    d.id || 'FEHLT',\n    antwort_title: d.title || 'FEHLT',\n    version:       d.version ? d.version.number : '?'\n  };\n}\n\nconsole.log('[DEBUG 3 - Confluence Response]', JSON.stringify(info));\nreturn { json: Object.assign({}, d, { _debug_confluence: info }) };"
+      },
+      "id": "debug-confluence-response",
+      "name": "Debug: Confluence-Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1628, 300]
     }
   ],
   "connections": {
@@ -327,6 +386,17 @@
       "main": [
         [
           {
+            "node": "Debug: Kunden-Normalisierung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Kunden-Normalisierung": {
+      "main": [
+        [
+          {
             "node": "Merge: Kunden + Termine + Gruppen",
             "type": "main",
             "index": 0
@@ -371,6 +441,17 @@
       "main": [
         [
           {
+            "node": "Debug: Empfänger-Liste",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Empfänger-Liste": {
+      "main": [
+        [
+          {
             "node": "Loop: Ein Kunde pro Durchlauf",
             "type": "main",
             "index": 0
@@ -394,7 +475,36 @@
       "main": [
         [
           {
+            "node": "Debug: Confluence-Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Confluence-Response": {
+      "main": [
+        [
+          {
+            "node": "IF: Seite gefunden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Seite gefunden": {
+      "main": [
+        [
+          {
             "node": "Code: Tabelle aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop: Ein Kunde pro Durchlauf",
             "type": "main",
             "index": 0
           }

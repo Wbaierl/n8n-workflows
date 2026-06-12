@@ -1,0 +1,731 @@
+{
+  "name": "BoardThemen → Confluence Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        200
+      ],
+      "id": "bt001",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        400
+      ],
+      "id": "bt002",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/36647c7628028085a36fff0f451b6c3d/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"page_size\": 100 }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        480,
+        300
+      ],
+      "id": "bt003",
+      "name": "HTTP: DB Gruppen laden",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/37147c7628028031acede5b94533c902/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"page_size\": 100 }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        720,
+        300
+      ],
+      "id": "bt004",
+      "name": "HTTP: BoardThemen laden",
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var boardThemenRes = $input.first().json;\nvar groupsRes = $('HTTP: DB Gruppen laden').first().json;\n\n// Karte: Gruppen-ID → Confluence Space Key\nvar groupMap = {};\n(groupsRes.results || []).forEach(function(r) {\n  var sk = '';\n  try { sk = r.properties['Confluence Space Key'].rich_text[0].plain_text; } catch(e) {}\n  if (sk) groupMap[r.id] = sk;\n});\n\n// Alle BoardThemen mit Space Key aus der verlinkten Gruppe ermitteln\nvar allThemen = (boardThemenRes.results || []).map(function(entry) {\n  var thema = '';\n  try { thema = entry.properties.Thema.title[0].plain_text; } catch(e) {}\n\n  var dateStr = '';\n  try { dateStr = entry.properties['Termine-Datum'].rollup.array[0].date.start; } catch(e) {}\n  var datum = '';\n  if (dateStr) {\n    var d = new Date(dateStr);\n    datum = String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();\n  }\n\n  var vortragender = '';\n  try { vortragender = entry.properties.Vortragender.rich_text[0].plain_text; } catch(e) {}\n  var vortragUrl = '';\n  try { vortragUrl = entry.properties['Vortrag URL'].url || ''; } catch(e) {}\n  var summary = '';\n  try { summary = entry.properties.Summary.rich_text[0].plain_text; } catch(e) {}\n\n  // Space Key aus der verlinkten Gruppe lesen\n  var spaceKey = '';\n  try {\n    var rels = entry.properties['DB Gruppen'].relation || [];\n    if (rels.length > 0) spaceKey = groupMap[rels[0].id] || '';\n  } catch(e) {}\n\n  return { thema: thema, datum: datum, vortragender: vortragender,\n           vortragUrl: vortragUrl, summary: summary, spaceKey: spaceKey };\n});\n\n// Nur Themen mit bekanntem Space Key\nvar withKey = allThemen.filter(function(t) { return t.spaceKey; });\nif (withKey.length === 0) throw new Error('Keine BoardThemen mit verlinkter DB-Gruppe und Confluence Space Key gefunden');\n\n// Häufigsten Space Key bestimmen (primärer Space für diesen Lauf)\nvar counts = {};\nwithKey.forEach(function(t) { counts[t.spaceKey] = (counts[t.spaceKey] || 0) + 1; });\nvar primarySpaceKey = '';\nvar maxCount = 0;\nObject.keys(counts).forEach(function(sk) {\n  if (counts[sk] > maxCount) { maxCount = counts[sk]; primarySpaceKey = sk; }\n});\n\n// Nur Themen des ermittelten Space Key behalten\nvar themen = withKey.filter(function(t) { return t.spaceKey === primarySpaceKey; });\n\n// Sortieren: neueste zuerst\nthemen.sort(function(a, b) {\n  if (!a.datum && !b.datum) return 0;\n  if (!a.datum) return 1;\n  if (!b.datum) return -1;\n  return b.datum.split('.').reverse().join('-').localeCompare(a.datum.split('.').reverse().join('-'));\n});\n\nreturn [{ json: { themen: themen, count: themen.length, spaceKey: primarySpaceKey } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "id": "bt005",
+      "name": "Code: Filtern & Transformieren"
+    },
+    {
+      "parameters": {
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/space/{{ $json.spaceKey }}?expand=homepage.body.storage,homepage.version",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1200,
+        300
+      ],
+      "id": "bt006",
+      "name": "HTTP: Confluence Seite laden",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "PF87r2L8fanKC0Lk",
+          "name": "Confluence"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function esc(s) {\n  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nfunction findMatchingTableEnd(str, tableStart) {\n  var depth = 0;\n  var pos = tableStart;\n  while (pos < str.length) {\n    var nextOpen = str.indexOf('<table', pos);\n    var nextClose = str.indexOf('</table>', pos);\n    if (nextClose === -1) return -1;\n    if (nextOpen !== -1 && nextOpen < nextClose) { depth++; pos = nextOpen + 6; }\n    else { if (depth === 0) return nextClose; depth--; pos = nextClose + 8; }\n  }\n  return -1;\n}\n\nfunction stripHtml(html) {\n  return (html || '').replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();\n}\n\n// Themen aus dem aktualisierten Node\nvar themenSource;\ntry { themenSource = $('Code: Themen aktualisieren').first().json.themen; } catch(e) {}\nif (!themenSource) themenSource = $('Code: Filtern & Transformieren').first().json.themen || [];\n\nvar res = $input.first().json;\nvar page = res.homepage || (res.results && res.results[0]);\nif (!page) throw new Error('Confluence-Seite nicht gefunden');\nvar pageId = page.id;\nvar version = page.version.number;\nvar body = page.body.storage.value;\nvar bodyLower = body.toLowerCase();\n\n// ── Bestehende Tabellenzeilen extrahieren ──────────────────────────────────\n// Suche den Abschnitt \"Themen - Vorträge\" und die dazugehörige Tabelle\nvar searchCandidates = [\n  'vorträge','vortr&auml;ge','vortr&#228;ge','vortr&#xe4;ge','vortr&#xE4;ge',\n  'vortrage','themen - vortr','themen &ndash; vortr','themen / vortr','vortr'\n];\nvar hi = -1;\nfor (var i = 0; i < searchCandidates.length; i++) {\n  var idx = bodyLower.indexOf(searchCandidates[i]);\n  if (idx !== -1) { hi = idx; break; }\n}\n\nvar existingRowMap = {};  // thema_text_lowercase → vollständiges <tr>...</tr> HTML\n\nif (hi !== -1) {\n  var after = body.substring(hi);\n  var ts = after.indexOf('<table');\n  if (ts !== -1) {\n    var te = findMatchingTableEnd(after, ts);\n    if (te !== -1) {\n      var tableHtml = after.substring(ts, te + 8);\n      // Alle <tr> Elemente parsen (erste Zeile = Header, überspringen)\n      var trPos = 0;\n      var firstTr = tableHtml.indexOf('<tr', trPos);\n      if (firstTr !== -1) {\n        var firstTrEnd = tableHtml.indexOf('</tr>', firstTr) + 5;\n        trPos = firstTrEnd;  // Header übersprungen\n        while (trPos < tableHtml.length) {\n          var trStart = tableHtml.indexOf('<tr', trPos);\n          if (trStart === -1) break;\n          var trEnd = tableHtml.indexOf('</tr>', trStart) + 5;\n          var rowHtml = tableHtml.substring(trStart, trEnd);\n          // Erste <td> = Thema-Zelle, Text extrahieren\n          var tdStart = rowHtml.indexOf('<td');\n          if (tdStart !== -1) {\n            var tdEnd = rowHtml.indexOf('</td>', tdStart) + 5;\n            var tdHtml = rowHtml.substring(tdStart, tdEnd);\n            var themaText = stripHtml(tdHtml).toLowerCase();\n            if (themaText) existingRowMap[themaText] = rowHtml;\n          }\n          trPos = trEnd;\n        }\n      }\n    }\n  }\n}\n\n// ── Neue Tabelle aufbauen ──────────────────────────────────────────────────\nvar header = '<tr>' +\n  '<th><p><strong>Thema</strong></p></th>' +\n  '<th><p><strong>Summary</strong></p></th>' +\n  '<th><p><strong>Datum</strong></p></th>' +\n  '<th><p><strong>Vortragender</strong></p></th>' +\n  '</tr>';\n\nvar rows;\nif (themenSource.length > 0) {\n  rows = themenSource.map(function(t) {\n    var themaKey = (t.thema || '').toLowerCase();\n    // Bestehende Zeile vorhanden? → unverändert übernehmen (manuelle Links bleiben)\n    if (existingRowMap[themaKey]) {\n      return existingRowMap[themaKey];\n    }\n    // Neue Zeile: Link aus Workflow falls vorhanden, sonst plain Text\n    var themaCell = t.confluenceFileUrl\n      ? '<a href=\"' + t.confluenceFileUrl + '\">' + esc(t.thema) + '</a>'\n      : esc(t.thema);\n    return '<tr>' +\n      '<td><p>' + themaCell + '</p></td>' +\n      '<td><p>' + esc(t.summary || '') + '</p></td>' +\n      '<td><p>' + (t.datum || '') + '</p></td>' +\n      '<td><p>' + esc(t.vortragender) + '</p></td>' +\n      '</tr>';\n  }).join('');\n} else {\n  rows = '<tr><td colspan=\"4\"><p>Keine Themen vorhanden</p></td></tr>';\n}\n\nvar newTable = '<table data-table-width=\"760\" data-layout=\"default\">' +\n  '<colgroup><col/><col/><col/><col/></colgroup>' +\n  '<tbody>' + header + rows + '</tbody>' +\n  '</table>';\n\n// ── Tabelle im Body ersetzen ──────────────────────────────────────────────\nvar newBody;\nif (hi === -1) throw new Error('Abschnitt Vortraege nicht gefunden');\n\nvar afterSection = body.substring(hi);\nvar strategy = '';\n\nvar RICH_OPEN = '<ac:rich-text-body>';\nvar RICH_CLOSE = '</ac:rich-text-body>';\nvar rbStart = afterSection.indexOf(RICH_OPEN);\nvar rbClose = afterSection.indexOf(RICH_CLOSE);\n\nif (rbStart !== -1 && rbClose !== -1 && rbStart < rbClose) {\n  strategy = 'expand-macro';\n  newBody = body.substring(0, hi + rbStart + RICH_OPEN.length) + newTable + body.substring(hi + rbClose);\n} else {\n  var headingClosePos = -1; var headingCloseTagLen = 0;\n  for (var level = 1; level <= 6; level++) {\n    var htag = '</h' + level + '>';\n    var hpos = afterSection.indexOf(htag);\n    if (hpos !== -1 && (headingClosePos === -1 || hpos < headingClosePos)) {\n      headingClosePos = hpos; headingCloseTagLen = htag.length;\n    }\n  }\n  var insertPoint = headingClosePos !== -1 ? headingClosePos + headingCloseTagLen : 0;\n  var afterHeading = afterSection.substring(insertPoint);\n  var tableInCell = afterHeading.indexOf('<table');\n  if (tableInCell !== -1) {\n    strategy = 'replace-existing-table';\n    var tableEnd = findMatchingTableEnd(afterHeading, tableInCell);\n    if (tableEnd === -1) throw new Error('Kein passendes </table>');\n    newBody = body.substring(0, hi + insertPoint + tableInCell) + newTable + afterHeading.substring(tableEnd + 8);\n  } else {\n    strategy = 'insert-after-heading';\n    newBody = body.substring(0, hi + insertPoint) + newTable + body.substring(hi + insertPoint);\n  }\n}\n\nreturn [{ json: { pageId: pageId, version: version, newBody: newBody,\n  debug: { strategy: strategy, themenCount: themenSource.length,\n           existingRowsFound: Object.keys(existingRowMap).length,\n           existingKeys: Object.keys(existingRowMap) } } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        300
+      ],
+      "id": "bt007",
+      "name": "Code: Tabelle aufbauen"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.pageId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ version: { number: $json.version + 1 }, title: 'Template Unternehmerboard Home', type: 'page', body: { storage: { value: $json.newBody, representation: 'storage' } } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1680,
+        300
+      ],
+      "id": "bt008",
+      "name": "HTTP: Confluence Seite aktualisieren",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "PF87r2L8fanKC0Lk",
+          "name": "Confluence"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content?spaceKey={{ $json.spaceKey }}&title=Vortr%C3%A4ge&expand=ancestors&limit=10",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        960,
+        520
+      ],
+      "id": "bt009",
+      "name": "HTTP: Confluence Vorträge-Seite suchen",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "PF87r2L8fanKC0Lk",
+          "name": "Confluence"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "var confluenceRes = $input.first().json;\nvar themen = $('Code: Filtern & Transformieren').first().json.themen || [];\n\n// Vortraege-Seite unter Dokumentenportal finden\nvar pages = confluenceRes.results || [];\nvar vortragPageId = '';\nfor (var i = 0; i < pages.length; i++) {\n  var ancestors = pages[i].ancestors || [];\n  var underDokPortal = ancestors.some(function(a) {\n    return (a.title || '').toLowerCase().indexOf('dokumentenportal') !== -1;\n  });\n  if (underDokPortal || pages.length === 1) { vortragPageId = pages[i].id; break; }\n}\nif (!vortragPageId && pages.length > 0) vortragPageId = pages[0].id;\nif (!vortragPageId) throw new Error('Confluence-Seite \"Vortraege\" unter Dokumentenportal nicht gefunden');\n\nfunction sanitizeFilename(thema, datum, url) {\n  var ext = '';\n  var urlPath = (url || '').split('?')[0];\n  var lastDot = urlPath.lastIndexOf('.');\n  if (lastDot !== -1 && lastDot > urlPath.length - 10) ext = urlPath.substring(lastDot).toLowerCase();\n  if (!ext) ext = '.pdf';\n  var today = new Date().toISOString().substring(0, 10);\n  var datePrefix = datum ? datum.split('.').reverse().join('-') : today;\n  var sanitized = (thema || 'Vortrag')\n    .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue')\n    .replace(/Ä/g, 'Ae').replace(/Ö/g, 'Oe').replace(/Ü/g, 'Ue')\n    .replace(/ß/g, 'ss')\n    .replace(/[^a-zA-Z0-9]+/g, '-')\n    .replace(/-+/g, '-').replace(/^-|-$/g, '')\n    .substring(0, 60);\n  return datePrefix + '_' + sanitized + ext;\n}\n\nvar spaceKey = $('Code: Filtern & Transformieren').first().json.spaceKey || '';\nreturn themen.map(function(t, idx) {\n  var hasUrl = !!(t.vortragUrl && t.vortragUrl.trim());\n  return { json: {\n    thema: t.thema, datum: t.datum, vortragender: t.vortragender,\n    vortragUrl: t.vortragUrl || '', needsUpload: hasUrl,\n    filename: hasUrl ? sanitizeFilename(t.thema, t.datum, t.vortragUrl) : '',\n    vortragPageId: vortragPageId, themenIndex: idx, confluenceFileUrl: '',\n    spaceKey: spaceKey\n  }};\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        520
+      ],
+      "id": "bt010",
+      "name": "Code: Uploads vorbereiten"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-upload-01",
+              "leftValue": "={{ $json.needsUpload }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1400,
+        520
+      ],
+      "id": "bt011",
+      "name": "IF: Hat Vortrag-URL?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item;\nconst filename = item.json.filename || 'vortrag.pdf';\nconst newItem = { json: item.json, binary: {} };\nif (item.binary && item.binary.pdf_binary) {\n  newItem.binary.pdf_binary = {\n    ...item.binary.pdf_binary,\n    fileName: filename,\n    mimeType: item.binary.pdf_binary.mimeType || 'application/octet-stream'\n  };\n}\nreturn [newItem];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2060,
+        420
+      ],
+      "id": "bt013",
+      "name": "Code: Datei umbenennen"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.vortragPageId }}/child/attachment",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Atlassian-Token",
+              "value": "no-check"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "pdf_binary"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2720,
+        300
+      ],
+      "id": "bt014",
+      "name": "HTTP: Confluence Anhang hochladen",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "PF87r2L8fanKC0Lk",
+          "name": "Confluence"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.item.json;\n\n// TRUE-Pfad: Anhang existierte bereits → _existing_url ist gesetzt\n// FALSE-Pfad: Neuer Upload → POST-Response mit results[0]._links.download\nvar confluenceFileUrl = '';\nvar themenIndex, thema, datum, vortragender, vortragUrl, summary, spaceKey;\n\nif (input._existing_url !== undefined) {\n  // TRUE-Pfad: alle Originaldaten direkt im Item vorhanden\n  confluenceFileUrl = input._existing_url;\n  themenIndex = input.themenIndex;\n  thema = input.thema;\n  datum = input.datum;\n  vortragender = input.vortragender;\n  vortragUrl = input.vortragUrl;\n  summary = input.summary || '';\n  spaceKey = input.spaceKey || '';\n} else {\n  // FALSE-Pfad: POST-Response, Originaldaten via Cross-Node-Referenz\n  const results = input.results || [];\n  const base = 'https://blboardsolutions.atlassian.net/wiki';\n  if (results.length > 0 && results[0]._links) {\n    confluenceFileUrl = results[0]._links.download\n      ? base + results[0]._links.download\n      : '';\n  }\n  const orig = $('Code: Uploads vorbereiten').item.json;\n  themenIndex = orig.themenIndex;\n  thema = orig.thema;\n  datum = orig.datum;\n  vortragender = orig.vortragender;\n  vortragUrl = orig.vortragUrl;\n  summary = orig.summary || '';\n  spaceKey = orig.spaceKey || '';\n}\n\nreturn [{ json: {\n  thema, datum, vortragender, vortragUrl, summary, spaceKey,\n  themenIndex, needsUpload: true,\n  confluenceFileUrl\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3160,
+        420
+      ],
+      "id": "bt015",
+      "name": "Code: Confluence-URL extrahieren"
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2720,
+        520
+      ],
+      "id": "bt016",
+      "name": "Merge: Upload-Ergebnisse"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst originalThemen = $('Code: Filtern & Transformieren').first().json.themen || [];\n\n// spaceKey aus den Input-Items holen (direkt weitergereicht aus Uploads vorbereiten)\nvar spaceKey = '';\nfor (var i = 0; i < items.length; i++) {\n  if (items[i].json.spaceKey) { spaceKey = items[i].json.spaceKey; break; }\n}\n// Fallback: Cross-Node-Referenz\nif (!spaceKey) {\n  try { spaceKey = $('Code: Filtern & Transformieren').first().json.spaceKey || ''; } catch(e) {}\n}\n\nconst uploadMap = {};\nitems.forEach(function(item) {\n  if (item.json.confluenceFileUrl) uploadMap[item.json.themenIndex] = item.json.confluenceFileUrl;\n});\n\nconst updatedThemen = originalThemen.map(function(t, idx) {\n  return { thema: t.thema, datum: t.datum, vortragender: t.vortragender,\n           vortragUrl: t.vortragUrl || '', summary: t.summary || '',\n           confluenceFileUrl: uploadMap[idx] || '' };\n});\n\nreturn [{ json: { themen: updatedThemen, count: updatedThemen.length, spaceKey: spaceKey } }];",
+        "mode": "runOnceForAllItems"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2940,
+        520
+      ],
+      "id": "bt017",
+      "name": "Code: Themen aktualisieren"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// HTTP: Confluence Anhang prüfen ersetzt das Item-JSON.\n// Originaldaten aus Code: Uploads vorbereiten holen.\nconst origData = $('Code: Uploads vorbereiten').item.json;\nconst shareUrl = origData.vortragUrl || '';\nconst encoded = 'u!' + Buffer.from(shareUrl).toString('base64')\n  .replace(/=+$/, '').replace(/\\//g, '_').replace(/\\+/g, '-');\nreturn {\n  json: {\n    ...origData,\n    graph_download_url: `https://graph.microsoft.com/v1.0/shares/${encoded}/driveItem/content`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        420
+      ],
+      "id": "bt012a",
+      "name": "Code: Graph Download-URL"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.graph_download_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf_binary"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1840,
+        420
+      ],
+      "id": "bt012b",
+      "name": "HTTP: Datei von OneDrive laden",
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.vortragPageId }}/child/attachment?filename={{ encodeURIComponent($json.filename) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2280,
+        420
+      ],
+      "id": "bt018",
+      "name": "HTTP: Confluence Anhang prüfen",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "PF87r2L8fanKC0Lk",
+          "name": "Confluence"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-attachment-exists-01",
+              "leftValue": "={{ $json.size }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2500,
+        420
+      ],
+      "id": "bt019",
+      "name": "IF: Anhang bereits vorhanden?"
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2940,
+        420
+      ],
+      "id": "bt020",
+      "name": "Merge: Upload oder Vorhanden"
+    },
+    {
+      "id": "bt-prüfen-merge",
+      "name": "Code: Prüfen-Ergebnis zusammenführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2390,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Prüfen-Response mit Originaldaten aus Code: Uploads vorbereiten zusammenführen\n// So sind themenIndex und andere Felder nach dem IF-Node noch verfügbar\nconst prüfenRes = $input.item.json;\nconst orig = $('Code: Uploads vorbereiten').item.json;\n\nconst prüfenResults = prüfenRes.results || [];\nconst base = 'https://blboardsolutions.atlassian.net/wiki';\nvar existingUrl = '';\nif (prüfenResults.length > 0 && prüfenResults[0]._links) {\n  existingUrl = prüfenResults[0]._links.download\n    ? base + prüfenResults[0]._links.download\n    : '';\n}\n\nreturn { json: {\n  // Originaldaten\n  thema: orig.thema,\n  datum: orig.datum,\n  vortragender: orig.vortragender,\n  vortragUrl: orig.vortragUrl,\n  summary: orig.summary || '',\n  themenIndex: orig.themenIndex,\n  vortragPageId: orig.vortragPageId,\n  filename: orig.filename,\n  needsUpload: orig.needsUpload,\n  spaceKey: orig.spaceKey || '',\n  // Prüfen-Ergebnis\n  _attachment_found: prüfenResults.length > 0,\n  _existing_url: existingUrl\n} };"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP: DB Gruppen laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP: DB Gruppen laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: DB Gruppen laden": {
+      "main": [
+        [
+          {
+            "node": "HTTP: BoardThemen laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: BoardThemen laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Filtern & Transformieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Filtern & Transformieren": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Confluence Vorträge-Seite suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Confluence Seite laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Tabelle aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Tabelle aufbauen": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Confluence Seite aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Confluence Vorträge-Seite suchen": {
+      "main": [
+        [
+          {
+            "node": "Code: Uploads vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Uploads vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "IF: Hat Vortrag-URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Hat Vortrag-URL?": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Confluence Anhang prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge: Upload-Ergebnisse",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code: Datei umbenennen": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Confluence Anhang hochladen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Confluence Anhang hochladen": {
+      "main": [
+        [
+          {
+            "node": "Merge: Upload oder Vorhanden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Confluence-URL extrahieren": {
+      "main": [
+        [
+          {
+            "node": "Merge: Upload-Ergebnisse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: Upload-Ergebnisse": {
+      "main": [
+        [
+          {
+            "node": "Code: Themen aktualisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Themen aktualisieren": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Confluence Seite laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Graph Download-URL": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Datei von OneDrive laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Datei von OneDrive laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Datei umbenennen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Confluence Anhang prüfen": {
+      "main": [
+        [
+          {
+            "node": "Code: Prüfen-Ergebnis zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Anhang bereits vorhanden?": {
+      "main": [
+        [
+          {
+            "node": "Merge: Upload oder Vorhanden",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Code: Graph Download-URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: Upload oder Vorhanden": {
+      "main": [
+        [
+          {
+            "node": "Code: Confluence-URL extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Prüfen-Ergebnis zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "IF: Anhang bereits vorhanden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "HSomkpfv9ZqJU9Jn"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "",
+  "tags": []
+}

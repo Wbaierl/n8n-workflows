@@ -1,0 +1,538 @@
+{
+  "name": "Board Dokumente — OneDrive Import",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      },
+      "id": "bd000001-0000-0000-0000-000000000001",
+      "name": "Alle 15 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [160, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/36647c7628028085a36fff0f451b6c3d/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Notion-Version", "value": "2022-06-28" }]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"filter\":{\"and\":[{\"property\":\"Aktiv\",\"checkbox\":{\"equals\":true}},{\"property\":\"URL Protokolle\",\"url\":{\"is_not_empty\":true}}]},\"page_size\":100}",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000002",
+      "name": "Notion: Gruppen laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 220],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/2f847c76280280d29337ed2a1f1b7256/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Notion-Version", "value": "2022-06-28" }]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"filter\":{\"and\":[{\"property\":\"ActiveProject\",\"checkbox\":{\"equals\":true}},{\"property\":\"URL Protokolle\",\"url\":{\"is_not_empty\":true}}]},\"page_size\":100}",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000003",
+      "name": "Notion: Kunden laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [380, 420],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000004",
+      "name": "Merge: Gruppen + Kunden",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [600, 320]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst sources = [];\n\nfor (const item of items) {\n  const results = item.json.results || [];\n  for (const page of results) {\n    const props = page.properties;\n    // Distinguish: Gruppen have 'Aktiv', Kunden have 'ActiveProject'\n    const isGruppe = props['Aktiv'] !== undefined;\n    const name = props.Name?.title?.[0]?.plain_text || '';\n    const urlProtokolle = props['URL Protokolle']?.url || '';\n    const urlAgenda = props['URL Agenda']?.url || '';\n\n    if (urlProtokolle) {\n      sources.push({\n        json: {\n          source_type: isGruppe ? 'gruppe' : 'kunde',\n          source_id: page.id,\n          source_name: name,\n          onedrive_url: urlProtokolle\n        }\n      });\n    }\n    if (urlAgenda && urlAgenda !== urlProtokolle) {\n      sources.push({\n        json: {\n          source_type: isGruppe ? 'gruppe' : 'kunde',\n          source_id: page.id,\n          source_name: name,\n          onedrive_url: urlAgenda\n        }\n      });\n    }\n  }\n}\n\nreturn sources.length > 0 ? sources : [{json: {_no_sources: true}}];"
+      },
+      "id": "bd000001-0000-0000-0000-000000000005",
+      "name": "Code: Quellen normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [820, 320]
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "bd000001-0000-0000-0000-000000000006",
+      "name": "Loop: Quellen",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [1040, 320]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\n\nif (item._no_sources) {\n  return { json: { _skip: true } };\n}\n\nconst shareUrl = item.onedrive_url;\nconst encoded = 'u!' + Buffer.from(shareUrl).toString('base64').replace(/=+$/, '').replace(/\\//g, '_').replace(/\\+/g, '-');\n\nreturn {\n  json: {\n    ...item,\n    encoded_url: encoded,\n    graph_url: `https://graph.microsoft.com/v1.0/shares/${encoded}/driveItem/children`\n  }\n};"
+      },
+      "id": "bd000001-0000-0000-0000-000000000007",
+      "name": "Code: OneDrive URL encodieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 420]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.graph_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "Microsoft Drive OAuth2 API",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000008",
+      "name": "HTTP: OneDrive Ordner lesen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1480, 420],
+      "credentials": {
+        "Microsoft Drive OAuth2 API": {
+          "id": "74e2mFKEDMIJdHe4",
+          "name": "Microsoft OneDrive OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const source = $('Loop: Quellen').item.json;\nconst driveItems = $input.first().json.value || [];\n\nconst pdfs = driveItems\n  .filter(f => f.name && f.name.toLowerCase().endsWith('.pdf'))\n  .map(f => {\n    const filename = f.name;\n    const parts = filename.slice(0, -4).split('_');\n\n    let typ = 'Protokoll';\n    const prefix = parts[0].toUpperCase();\n    if (['AGD', 'AGENDA'].includes(prefix)) { typ = 'Agenda'; parts.shift(); }\n    else if (['PRO', 'PROTOKOLL'].includes(prefix)) { parts.shift(); }\n\n    let dateStr = null;\n    const re1 = /^\\d{4}-\\d{2}-\\d{2}$/;\n    const re2 = /^\\d{8}$/;\n    if (parts.length && re1.test(parts[0])) { dateStr = parts.shift(); }\n    else if (parts.length && re2.test(parts[0])) {\n      const d = parts.shift();\n      dateStr = `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;\n    }\n\n    const title = parts.join(' ').trim() || filename;\n    const webUrl = f['webUrl'] || '';\n\n    return {\n      json: {\n        file_id: f.id,\n        filename,\n        title,\n        typ,\n        meeting_datum: dateStr,\n        web_url: webUrl,\n        size: f.size || 0,\n        source_type: source.source_type,\n        source_id: source.source_id,\n        source_name: source.source_name\n      }\n    };\n  });\n\nreturn pdfs.length > 0 ? pdfs : [{ json: { _no_pdfs: true } }];"
+      },
+      "id": "bd000001-0000-0000-0000-000000000009",
+      "name": "Code: PDFs parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1700, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "has-pdfs-check",
+              "leftValue": "={{ $json._no_pdfs }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000010",
+      "name": "IF: Hat PDFs",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1920, 420]
+    },
+    {
+      "parameters": { "options": {} },
+      "id": "bd000001-0000-0000-0000-000000000011",
+      "name": "Loop: PDFs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2140, 320]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const fileId = $input.item.json.file_id;\nreturn {\n  json: {\n    ...$input.item.json,\n    _query_body: JSON.stringify({\n      filter: { property: 'OneDrive File ID', rich_text: { equals: fileId } },\n      page_size: 1\n    })\n  }\n};"
+      },
+      "id": "bd000001-0000-0000-0000-000000000029",
+      "name": "Code: Duplikat-Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2360, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/619275ab2b7a4051a8f34c7519a7bc83/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Notion-Version", "value": "2022-06-28" }]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json._query_body }}",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000012",
+      "name": "Notion: Duplikat prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2360, 320],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "exists-check",
+              "leftValue": "={{ $json.results.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000013",
+      "name": "IF: Neu (nicht vorhanden)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2580, 320]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const pdf = $('Loop: PDFs').item.json;\n\nconst properties = {\n  'Titel': { title: [{ text: { content: pdf.title } }] },\n  'Typ': { select: { name: pdf.typ } },\n  'Dokumenttyp': { select: { name: pdf.source_type === 'gruppe' ? 'Board' : 'Individuell' } },\n  'OneDrive URL': { url: pdf.web_url || null },\n  'OneDrive File ID': { rich_text: [{ text: { content: pdf.file_id } }] },\n  'Status': { select: { name: 'Entwurf' } },\n  'Quelle Board': { rich_text: [{ text: { content: pdf.source_name } }] },\n  'In Confluence anzeigen': { checkbox: false },\n  'ConfluenceSync': { checkbox: false }\n};\n\nif (pdf.meeting_datum) {\n  properties['Meeting Datum'] = { date: { start: pdf.meeting_datum } };\n}\n\nif (pdf.source_type === 'gruppe') {\n  properties['DB_Gruppen'] = { relation: [{ id: pdf.source_id }] };\n} else {\n  properties['DB Kunden'] = { relation: [{ id: pdf.source_id }] };\n}\n\nreturn {\n  json: {\n    _pdf: pdf,\n    body: JSON.stringify({\n      parent: { database_id: '619275ab2b7a4051a8f34c7519a7bc83' },\n      properties\n    })\n  }\n};"
+      },
+      "id": "bd000001-0000-0000-0000-000000000014",
+      "name": "Code: Notion-Body aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2800, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Notion-Version", "value": "2022-06-28" }]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000015",
+      "name": "Notion: Eintrag erstellen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3020, 220],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "is-gruppe-check",
+              "leftValue": "={{ $('Loop: PDFs').item.json.source_type }}",
+              "rightValue": "gruppe",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000016",
+      "name": "IF: Ist Gruppe",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [3240, 220]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $('Loop: PDFs').item.json.source_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Notion-Version", "value": "2022-06-28" }]
+        },
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000017",
+      "name": "Notion: Gruppen-Seite laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3460, 120],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const gruppenPage = $input.item.json;\nconst notionCreatedPageId = $('Notion: Eintrag erstellen').item.json.id;\nconst pdfItem = $('Loop: PDFs').item.json;\n\n// Extract DB Kunden relation IDs from the Gruppen page\nconst kundenRelation = gruppenPage.properties?.['DB Kunden']?.relation || [];\nconst kundenIds = kundenRelation.map(r => r.id).filter(Boolean);\n\nreturn {\n  json: {\n    notion_page_id: notionCreatedPageId,\n    kunden_ids: kundenIds,\n    has_kunden: kundenIds.length > 0,\n    pdf: pdfItem\n  }\n};"
+      },
+      "id": "bd000001-0000-0000-0000-000000000018",
+      "name": "Code: Kunden-IDs extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3680, 120]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            {
+              "id": "has-kunden-check",
+              "leftValue": "={{ $json.has_kunden }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000019",
+      "name": "IF: Hat aktive Kunden",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [3900, 120]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\nconst kundenRelations = item.kunden_ids.map(id => ({ id }));\n\nreturn {\n  json: {\n    _notion_page_id: item.notion_page_id,\n    body: JSON.stringify({\n      properties: {\n        'DB Kunden': { relation: kundenRelations },\n        'Dokumenttyp': { select: { name: 'Beides' } }\n      }\n    })\n  }\n};"
+      },
+      "id": "bd000001-0000-0000-0000-000000000020",
+      "name": "Code: Update-Body aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4120, 60]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json._notion_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Notion-Version", "value": "2022-06-28" }]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "bd000001-0000-0000-0000-000000000021",
+      "name": "Notion: Kunden + Dokumenttyp setzen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4340, 60],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 0.5,
+        "unit": "seconds"
+      },
+      "id": "bd000001-0000-0000-0000-000000000022",
+      "name": "Wait: 500ms",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [4560, 320],
+      "webhookId": "bd000001-0000-0000-0000-000000000022"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Alle 15 Minuten": {
+      "main": [
+        [
+          { "node": "Notion: Gruppen laden", "type": "main", "index": 0 },
+          { "node": "Notion: Kunden laden", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Notion: Gruppen laden": {
+      "main": [
+        [{ "node": "Merge: Gruppen + Kunden", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion: Kunden laden": {
+      "main": [
+        [{ "node": "Merge: Gruppen + Kunden", "type": "main", "index": 1 }]
+      ]
+    },
+    "Merge: Gruppen + Kunden": {
+      "main": [
+        [{ "node": "Code: Quellen normalisieren", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Quellen normalisieren": {
+      "main": [
+        [{ "node": "Loop: Quellen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop: Quellen": {
+      "main": [
+        [],
+        [{ "node": "Code: OneDrive URL encodieren", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: OneDrive URL encodieren": {
+      "main": [
+        [{ "node": "HTTP: OneDrive Ordner lesen", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP: OneDrive Ordner lesen": {
+      "main": [
+        [{ "node": "Code: PDFs parsen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: PDFs parsen": {
+      "main": [
+        [{ "node": "IF: Hat PDFs", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF: Hat PDFs": {
+      "main": [
+        [{ "node": "Loop: PDFs", "type": "main", "index": 0 }],
+        [{ "node": "Loop: Quellen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Loop: PDFs": {
+      "main": [
+        [{ "node": "Loop: Quellen", "type": "main", "index": 0 }],
+        [{ "node": "Code: Duplikat-Query", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Duplikat-Query": {
+      "main": [
+        [{ "node": "Notion: Duplikat prüfen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion: Duplikat prüfen": {
+      "main": [
+        [{ "node": "IF: Neu (nicht vorhanden)", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF: Neu (nicht vorhanden)": {
+      "main": [
+        [{ "node": "Code: Notion-Body aufbauen", "type": "main", "index": 0 }],
+        [{ "node": "Wait: 500ms", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Notion-Body aufbauen": {
+      "main": [
+        [{ "node": "Notion: Eintrag erstellen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion: Eintrag erstellen": {
+      "main": [
+        [{ "node": "IF: Ist Gruppe", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF: Ist Gruppe": {
+      "main": [
+        [{ "node": "Notion: Gruppen-Seite laden", "type": "main", "index": 0 }],
+        [{ "node": "Wait: 500ms", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion: Gruppen-Seite laden": {
+      "main": [
+        [{ "node": "Code: Kunden-IDs extrahieren", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Kunden-IDs extrahieren": {
+      "main": [
+        [{ "node": "IF: Hat aktive Kunden", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF: Hat aktive Kunden": {
+      "main": [
+        [{ "node": "Code: Update-Body aufbauen", "type": "main", "index": 0 }],
+        [{ "node": "Wait: 500ms", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Update-Body aufbauen": {
+      "main": [
+        [{ "node": "Notion: Kunden + Dokumenttyp setzen", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion: Kunden + Dokumenttyp setzen": {
+      "main": [
+        [{ "node": "Wait: 500ms", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait: 500ms": {
+      "main": [
+        [{ "node": "Loop: PDFs", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [{ "name": "Board Dokumente" }]
+}

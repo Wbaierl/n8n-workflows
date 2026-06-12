@@ -1,0 +1,783 @@
+{
+  "name": "Email Analyse & Antwort-Entwurf (Outlook + HubSpot + Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "output": "allProperties",
+        "filters": {},
+        "options": {}
+      },
+      "id": "ea000001-0000-0000-0000-000000000001",
+      "name": "Outlook Trigger",
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ea000002-a001",
+              "name": "from_email",
+              "value": "={{ $json.from.emailAddress.address }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000002-a002",
+              "name": "from_name",
+              "value": "={{ $json.from.emailAddress.name || $json.from.emailAddress.address }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000002-a003",
+              "name": "subject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000002-a004",
+              "name": "body",
+              "value": "={{ $json.body?.content || $json.bodyPreview || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000002-a005",
+              "name": "message_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000002-a006",
+              "name": "received_at",
+              "value": "={{ $json.receivedDateTime || $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000002-a007",
+              "name": "from_domain",
+              "value": "={{ '@' + ($json.from.emailAddress.address.split('@')[1] || '') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ea000002-0000-0000-0000-000000000002",
+      "name": "Email normalisieren",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea000017-c001",
+              "leftValue": "={{ $json.from_email }}",
+              "rightValue": "@blboardsolutions.de",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ea000017-0000-0000-0000-000000000017",
+      "name": "Externer Absender?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.notion.com/v1/databases/36a47c762802801e8d37fc2797bf7cac/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filter\": {\n    \"or\": [\n      { \"property\": \"E-Mail\", \"email\": { \"equals\": {{ JSON.stringify($json.from_email) }} } },\n      { \"property\": \"Eintrag\", \"title\": { \"equals\": {{ JSON.stringify($json.from_domain) }} } }\n    ]\n  },\n  \"page_size\": 1\n}",
+        "options": {}
+      },
+      "id": "ea000018-0000-0000-0000-000000000018",
+      "name": "Notion: InfoMail prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [900, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea000019-c001",
+              "leftValue": "={{ $json.results.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ea000019-0000-0000-0000-000000000019",
+      "name": "In InfoMail-Liste?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "operation": "search",
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "email|string",
+                    "value": "={{ $('Email normalisieren').first().json.from_email }}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "id": "ea000003-0000-0000-0000-000000000003",
+      "name": "HubSpot Suche",
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [1340, 300],
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "zGX2k1SKubP15OOY",
+          "name": "HubSpot account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea000004-c001",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ea000004-0000-0000-0000-000000000004",
+      "name": "Kunde bekannt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{ $('Email normalisieren').first().json.message_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"isRead\": true}",
+        "options": {}
+      },
+      "id": "ea000014-0000-0000-0000-000000000014",
+      "name": "Gelesen markieren (unbekannt)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1340, 100],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "=⚠️ Unbekannter Email-Absender: {{ $('Email normalisieren').first().json.from_email }}",
+        "bodyContent": "=Unbekannter Absender – kein Entwurf erstellt.\n\nAbsender: {{ $('Email normalisieren').first().json.from_email }}\nName: {{ $('Email normalisieren').first().json.from_name }}\nBetreff: {{ $('Email normalisieren').first().json.subject }}\nEmpfangen: {{ $('Email normalisieren').first().json.received_at }}\n\nDieser Absender wurde nicht in HubSpot gefunden. Bitte manuell prüfen.",
+        "additionalFields": {}
+      },
+      "id": "ea000005-0000-0000-0000-000000000005",
+      "name": "Unbekannter Absender",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [1120, 100],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ea000006-a001",
+              "name": "from_email",
+              "value": "={{ $('Email normalisieren').first().json.from_email }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a002",
+              "name": "from_name",
+              "value": "={{ $('Email normalisieren').first().json.from_name }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a003",
+              "name": "subject",
+              "value": "={{ $('Email normalisieren').first().json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a004",
+              "name": "body",
+              "value": "={{ $('Email normalisieren').first().json.body }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a005",
+              "name": "message_id",
+              "value": "={{ $('Email normalisieren').first().json.message_id }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a006",
+              "name": "received_at",
+              "value": "={{ $('Email normalisieren').first().json.received_at }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a007",
+              "name": "hubspot_name",
+              "value": "={{ (($json.properties?.firstname || '') + ' ' + ($json.properties?.lastname || '')).trim() || $('Email normalisieren').first().json.from_name }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a008",
+              "name": "hubspot_id",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "ea000006-a009",
+              "name": "hubspot_company",
+              "value": "={{ $json.properties?.company || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ea000006-0000-0000-0000-000000000006",
+      "name": "Daten zusammenführen",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 600,\n  \"temperature\": 0.1,\n  \"system\": {{ JSON.stringify(\"Du analysierst eingehende Kunden-Emails praezise und strukturiert.\\nAntworte ausschliesslich als valides JSON ohne Markdown-Formatierung.\\n\\nAnalysiere die Email nach diesen Dimensionen:\\n\\n{\\n  \\\"tonalitaet\\\": \\\"neutral|freundlich|formell|frustriert|aggressiv|verzweifelt\\\",\\n  \\\"dringlichkeit\\\": \\\"niedrig|mittel|hoch|sehr_hoch\\\",\\n  \\\"beziehung\\\": \\\"bestehender_kunde|neukunde|unbekannt\\\",\\n  \\\"stimmung\\\": \\\"zufrieden|neutral|enttaeuscht|veraergert|wuetend\\\",\\n  \\\"empathie_level\\\": \\\"niedrig|mittel|hoch\\\",\\n  \\\"hauptanliegen\\\": \\\"[praezise Zusammenfassung in einem Satz: Was will der Absender wirklich?]\\\",\\n  \\\"antwort_struktur\\\": \\\"fliesstext|bullet_points|gemischt\\\",\\n  \\\"eskalation\\\": false,\\n  \\\"eskalation_grund\\\": \\\"\\\",\\n  \\\"empfohlene_laenge\\\": 100,\\n  \\\"keywords\\\": [\\\"Begriff1\\\", \\\"Begriff2\\\"]\\n}\\n\\nEskalation = true bei: expliziten rechtlichen Drohungen, Beleidigungen, Datenschutzverletzungen oder Themen die Anwaltskosten oder Behoerden erwaehnen.\") }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\"Analysiere diese Email:\\nAbsender: \" + $json.from_email + \"\\nName: \" + $json.from_name + \"\\nBetreff: \" + $json.subject + \"\\nInhalt:\\n\" + $json.body) }}\n    }\n  ]\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ea000007-0000-0000-0000-000000000007",
+      "name": "Claude Analyse",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1340, 500],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "anthropicApi": {
+          "id": "iCMaqkiVfMfgXWXJ",
+          "name": "Anthropic account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Claude-Antwort parsen und Analyse-JSON extrahieren\nconst response = $input.item.json;\nconst text = response.content[0].text;\n\n// JSON aus Claude-Antwort extrahieren (ggf. Markdown-Code-Blocks entfernen)\nconst jsonMatch = text.match(/\\{[\\s\\S]*\\}/);\nif (!jsonMatch) {\n  throw new Error('Claude hat kein valides JSON zurueckgegeben. Antwort: ' + text.substring(0, 300));\n}\n\nlet analyse;\ntry {\n  analyse = JSON.parse(jsonMatch[0]);\n} catch (e) {\n  throw new Error('JSON-Parse-Fehler: ' + e.message + ' | Text: ' + text.substring(0, 200));\n}\n\n// Email- und HubSpot-Daten aus vorherigem Node holen\nconst emailData = $('Daten zusammenführen').first().json;\n\nreturn [{\n  json: {\n    // Analyse-Felder\n    tonalitaet: analyse.tonalitaet || 'neutral',\n    dringlichkeit: analyse.dringlichkeit || 'mittel',\n    beziehung: analyse.beziehung || 'bestehender_kunde',\n    stimmung: analyse.stimmung || 'neutral',\n    empathie_level: analyse.empathie_level || 'mittel',\n    hauptanliegen: analyse.hauptanliegen || 'Kein Anliegen erkannt',\n    antwort_struktur: analyse.antwort_struktur || 'fliesstext',\n    eskalation: analyse.eskalation === true,\n    eskalation_grund: analyse.eskalation_grund || '',\n    empfohlene_laenge: analyse.empfohlene_laenge || 100,\n    keywords: Array.isArray(analyse.keywords) ? analyse.keywords : [],\n    // Email-Daten durchreichen\n    from_email: emailData.from_email,\n    from_name: emailData.from_name,\n    subject: emailData.subject,\n    body: emailData.body,\n    message_id: emailData.message_id,\n    received_at: emailData.received_at,\n    // HubSpot-Daten durchreichen\n    hubspot_name: emailData.hubspot_name,\n    hubspot_id: emailData.hubspot_id,\n    hubspot_company: emailData.hubspot_company\n  }\n}];"
+      },
+      "id": "ea000008-0000-0000-0000-000000000008",
+      "name": "Analyse parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ea000009-c001",
+              "leftValue": "={{ $json.eskalation }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "ea000009-0000-0000-0000-000000000009",
+      "name": "Eskalation prüfen",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1780, 500]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{ $json.message_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"isRead\": true}",
+        "options": {}
+      },
+      "id": "ea000015-0000-0000-0000-000000000015",
+      "name": "Gelesen markieren (eskalation)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2220, 300],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "=⚠️ Manuelle Review erforderlich: {{ $json.subject }}",
+        "bodyContent": "=ESKALATION – Diese Email erfordert manuelle Bearbeitung!\n\nGrund: {{ $json.eskalation_grund }}\n\nAbsender: {{ $json.from_name }} <{{ $json.from_email }}>\nBetreff: {{ $json.subject }}\nTon: {{ $json.tonalitaet }} | Stimmung: {{ $json.stimmung }} | Dringlichkeit: {{ $json.dringlichkeit }}\nHauptanliegen: {{ $json.hauptanliegen }}\nKunde: {{ $json.hubspot_name }} ({{ $json.hubspot_company || 'Unbekannt' }})\n\nKeine automatische Antwort wurde erstellt.\nBitte diese Email sorgfältig manuell bearbeiten.",
+        "additionalFields": {}
+      },
+      "id": "ea000010-0000-0000-0000-000000000010",
+      "name": "Eskalation Email",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 1200,\n  \"temperature\": 0.7,\n  \"system\": {{ JSON.stringify(\"Du bist ein professioneller Email-Assistent und schreibst Antworten im persoenlichen Stil des Nutzers.\\n\\n=== SCHREIBSTIL-PROFIL DES NUTZERS ===\\n[HIER EINSETZEN – Beschreibe deinen Stil, z.B.:]\\nDirekt und auf den Punkt, keine langen Einleitungen.\\nVerwendet 'Sie'-Anrede, aber mit warmem Ton.\\nSchreibt aktive Saetze, vermeidet Passiv.\\nNutzt kurze Absaetze fuer bessere Lesbarkeit.\\nKeine uebertriebenen Floskeln.\\nTypische Signatur: 'Beste Gruesse, [Dein Name]'\\n\\n=== STIL-BEISPIELE (echte Emails des Nutzers) ===\\n[BEISPIEL 1 – HIER EINSETZEN]\\n\\n[BEISPIEL 2 – HIER EINSETZEN]\\n\\n[BEISPIEL 3 – HIER EINSETZEN]\\n\\n=== ANTWORT-STRATEGIE (basierend auf Analyse) ===\\n- stimmung=veraergert/wuetend: Sofortige Empathie, Verantwortung uebernehmen, keine Ausreden\\n- stimmung=enttaeuscht: Verstaendnis zeigen, Loesungsweg aufzeigen\\n- stimmung=neutral/zufrieden: Professionell und effizient\\n- antwort_struktur=bullet_points: Nutze Aufzaehlungspunkte\\n- antwort_struktur=fliesstext: Zusammenhaengende Absaetze\\n- Erstelle NUR den Email-Body, keine Betreffzeile\\n- Beginne direkt mit der Anrede\\n- Nutze den echten Kundennamen aus den Daten, keine Platzhalter wie [Name]\\n- Empfohlene Laenge ist ein Richtwert (+/-10%)\\n- Der Text ist ein Entwurf zur Pruefung durch den Nutzer\") }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify(\n        \"Schreibe eine Antwort auf diese Email.\\n\\n\" +\n        \"=== ANALYSE-ERGEBNIS ===\\n\" +\n        \"Tonalitaet: \" + $json.tonalitaet + \"\\n\" +\n        \"Dringlichkeit: \" + $json.dringlichkeit + \"\\n\" +\n        \"Stimmung: \" + $json.stimmung + \"\\n\" +\n        \"Empathie-Level: \" + $json.empathie_level + \"\\n\" +\n        \"Hauptanliegen: \" + $json.hauptanliegen + \"\\n\" +\n        \"Empfohlene Laenge: \" + $json.empfohlene_laenge + \" Woerter (+/-10%)\\n\" +\n        \"Antwort-Struktur: \" + $json.antwort_struktur + \"\\n\\n\" +\n        \"=== ORIGINAL-EMAIL ===\\n\" +\n        \"Absender: \" + $json.from_name + \" <\" + $json.from_email + \">\\n\" +\n        \"Kundenname (HubSpot): \" + $json.hubspot_name + \"\\n\" +\n        \"Firma: \" + ($json.hubspot_company || 'unbekannt') + \"\\n\" +\n        \"Betreff: \" + $json.subject + \"\\n\" +\n        \"Inhalt:\\n\" + $json.body + \"\\n\\n\" +\n        \"Erstelle den Email-Entwurf jetzt. Beginne direkt mit der Anrede.\"\n      ) }}\n    }\n  ]\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ea000011-0000-0000-0000-000000000011",
+      "name": "Claude Antwort",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2000, 700],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "anthropicApi": {
+          "id": "iCMaqkiVfMfgXWXJ",
+          "name": "Anthropic account 6"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "=Re: {{ $('Analyse parsen').first().json.subject }}",
+        "bodyContent": "={{ $json.content[0].text }}",
+        "bodyContentType": "Text",
+        "additionalFields": {
+          "toRecipients": "={{ $('Analyse parsen').first().json.from_email }}"
+        }
+      },
+      "id": "ea000012-0000-0000-0000-000000000012",
+      "name": "Outlook Entwurf",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [2220, 700],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "=📝 Neuer Entwurf: Re: {{ $('Analyse parsen').first().json.subject }}",
+        "bodyContent": "=Ein neuer Antwort-Entwurf wurde in Outlook gespeichert.\n\nVon: {{ $('Analyse parsen').first().json.from_name }} <{{ $('Analyse parsen').first().json.from_email }}>\nBetreff: Re: {{ $('Analyse parsen').first().json.subject }}\n\nAnalyse-Zusammenfassung:\n  Hauptanliegen: {{ $('Analyse parsen').first().json.hauptanliegen }}\n  Ton: {{ $('Analyse parsen').first().json.tonalitaet }} | Stimmung: {{ $('Analyse parsen').first().json.stimmung }} | Dringlichkeit: {{ $('Analyse parsen').first().json.dringlichkeit }}\n  Empathie: {{ $('Analyse parsen').first().json.empathie_level }}\n  Kunde (HubSpot): {{ $('Analyse parsen').first().json.hubspot_name }} ({{ $('Analyse parsen').first().json.hubspot_company || 'Firma unbekannt' }})\n\n→ Entwurf in Outlook öffnen, prüfen und vor dem Senden anpassen.",
+        "additionalFields": {}
+      },
+      "id": "ea000013-0000-0000-0000-000000000013",
+      "name": "Benachrichtigung",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [2440, 780],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://graph.microsoft.com/v1.0/me/messages/{{ $('Analyse parsen').first().json.message_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"isRead\": true}",
+        "options": {}
+      },
+      "id": "ea000016-0000-0000-0000-000000000016",
+      "name": "Gelesen markieren (fertig)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [2660, 780],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Outlook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Email normalisieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email normalisieren": {
+      "main": [
+        [
+          {
+            "node": "Externer Absender?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Externer Absender?": {
+      "main": [
+        [
+          {
+            "node": "Notion: InfoMail prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: InfoMail prüfen": {
+      "main": [
+        [
+          {
+            "node": "In InfoMail-Liste?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "In InfoMail-Liste?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HubSpot Suche",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HubSpot Suche": {
+      "main": [
+        [
+          {
+            "node": "Kunde bekannt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kunde bekannt?": {
+      "main": [
+        [
+          {
+            "node": "Daten zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gelesen markieren (unbekannt)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gelesen markieren (unbekannt)": {
+      "main": [
+        [
+          {
+            "node": "Unbekannter Absender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daten zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "Claude Analyse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Analyse": {
+      "main": [
+        [
+          {
+            "node": "Analyse parsen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyse parsen": {
+      "main": [
+        [
+          {
+            "node": "Eskalation prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eskalation prüfen": {
+      "main": [
+        [
+          {
+            "node": "Gelesen markieren (eskalation)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude Antwort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gelesen markieren (eskalation)": {
+      "main": [
+        [
+          {
+            "node": "Eskalation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Antwort": {
+      "main": [
+        [
+          {
+            "node": "Outlook Entwurf",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outlook Entwurf": {
+      "main": [
+        [
+          {
+            "node": "Benachrichtigung",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Benachrichtigung": {
+      "main": [
+        [
+          {
+            "node": "Gelesen markieren (fertig)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "HSomkpfv9ZqJU9Jn"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "",
+  "tags": []
+}

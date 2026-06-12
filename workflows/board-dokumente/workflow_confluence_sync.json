@@ -1,0 +1,2217 @@
+{
+  "name": "Board Dokumente — Confluence Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "bd000002-0000-0000-0000-000000000001",
+      "name": "Alle 10 Minuten",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/619275ab2b7a4051a8f34c7519a7bc83/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"filter\": {\"and\": [{\"property\": \"In Confluence anzeigen\", \"checkbox\": {\"equals\": true}}, {\"property\": \"ConfluenceSync\", \"checkbox\": {\"equals\": false}}, {\"property\": \"Status\", \"select\": {\"equals\": \"Freigegeben\"}}]}, \"page_size\": 50}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000002",
+      "name": "Notion: Zu synchronisierende Dokumente laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        320
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $input.first().json;\nconst results = body.results || [];\n\nif (results.length === 0) {\n  return [{ json: { _no_docs: true } }];\n}\n\nreturn results.map(page => {\n  const props = page.properties;\n  const title = props.Titel?.title?.[0]?.plain_text || 'Kein Titel';\n  const typ = props.Typ?.select?.name || 'Protokoll';\n  const dokumenttyp = props.Dokumenttyp?.select?.name || 'Board';\n  const meetingDatum = props['Meeting Datum']?.date?.start || null;\n  const oneDriveUrl = props['OneDrive URL']?.url || '';\n  const filename = props['Quelle Board']?.rich_text?.[0]?.plain_text || '';\n  const quelleBoard = props['Quelle Board']?.rich_text?.[0]?.plain_text || '';\n  const gruppenIds = (props.DB_Gruppen?.relation || []).map(r => r.id);\n  const kundenIds = (props['DB Kunden']?.relation || []).map(r => r.id);\n\n  return {\n    json: {\n      notion_page_id: page.id,\n      title,\n      typ,\n      dokumenttyp,\n      meeting_datum: meetingDatum,\n      onedrive_url: oneDriveUrl,\n      quelle_board: quelleBoard,\n      gruppen_ids: gruppenIds,\n      kunden_ids: kundenIds\n    }\n  };\n});"
+      },
+      "id": "bd000002-0000-0000-0000-000000000003",
+      "name": "Code: Dokumente aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "has-docs-check",
+              "leftValue": "={{ $json._no_docs }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000004",
+      "name": "IF: Hat Dokumente",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        820,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000005",
+      "name": "Loop: Dokumente",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1040,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const doc = $input.item.json;\nconst dokumenttyp = doc.dokumenttyp;\n\nlet primaryId, isGruppe;\nif (dokumenttyp === 'Individuell') {\n  // Individuell: primary source is always a Kunden\n  primaryId = doc.kunden_ids?.[0] || null;\n  isGruppe = false;\n} else {\n  // Board or Beides: primary source is Gruppe\n  primaryId = doc.gruppen_ids?.[0] || doc.kunden_ids?.[0] || null;\n  isGruppe = doc.gruppen_ids?.length > 0;\n}\n\nreturn {\n  json: {\n    ...doc,\n    primary_source_id: primaryId,\n    primary_is_gruppe: isGruppe\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000006",
+      "name": "Code: Primäre Quelle bestimmen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.primary_source_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000007",
+      "name": "Notion: Quellen-Seite laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1480,
+        220
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const sourcePage = $input.item.json;\nconst doc = $('Loop: Dokumente').item.json;\nconst primary = $('Code: Primäre Quelle bestimmen').item.json;\n\nconst props = sourcePage.properties;\n// Use primary_is_gruppe from Code: Primäre Quelle bestimmen (already computed upstream)\n// This correctly handles Beides with empty gruppen_ids (falls back to Kunden as primary)\nconst isGruppe = primary.primary_is_gruppe === true;\n\n// Try multiple possible property name variants (Notion is case-sensitive)\nconst getText = (p) => p?.rich_text?.[0]?.plain_text || p?.text?.[0]?.plain_text || '';\n\nconst spaceKey = getText(props['Confluence Space Key']) || getText(props['ConfluenceSpaceKey']) || getText(props['Confluence_Space_Key']) || '';\nconst parentPageId = getText(props['Confluence PageID']) || getText(props['ConfluencePageID']) || '';\n\nconst sourceName = props.Name?.title?.[0]?.plain_text || '';\nconst subfolderName = doc.typ === 'Agenda' ? 'Agenda PAB' : 'Protokolle PAB';\n\n// Expose raw props for debugging if config is missing\nconst missingFields = [];\nif (!spaceKey) missingFields.push('Confluence Space Key');\nif (!parentPageId) missingFields.push('Confluence PageID');\n\nreturn {\n  json: {\n    ...doc,\n    confluence_space_key: spaceKey,\n    confluence_parent_page_id: parentPageId,\n    confluence_subfolder: subfolderName,\n    source_name: sourceName,\n    _config_missing: missingFields.length > 0,\n    _config_missing_fields: missingFields\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000008",
+      "name": "Code: Confluence-Ziel aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "config-missing-check",
+              "leftValue": "={{ $json._config_missing }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000030",
+      "name": "Guard: Confluence-Config prüfen",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1920,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.notion_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ properties: { Status: { select: { name: 'Fehler' } }, Notizen: { rich_text: [{ text: { content: 'Confluence-Konfiguration fehlt: ' + $json._config_missing_fields.join(', ') + ' leer in DB Gruppen/Kunden' } }] } } }) }}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000031",
+      "name": "Notion: Fehler markieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2140,
+        420
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://blboardsolutions.atlassian.net/wiki/rest/api/content?title=${encodeURIComponent($json.confluence_subfolder)}&spaceKey=${$json.confluence_space_key}&type=page&expand=version` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000009",
+      "name": "Confluence: Unterseite prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2140,
+        120
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "subfolder-exists-check",
+              "leftValue": "={{ $json.size }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000010",
+      "name": "IF: Unterseite existiert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2140,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const results = $input.item.json.results || [];\nconst doc = $('Code: Confluence-Ziel aufbauen').item.json;\n\nreturn {\n  json: {\n    ...doc,\n    confluence_subfolder_id: results[0]?.id || ''\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000011",
+      "name": "Code: Unterseiten-ID extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2360,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://blboardsolutions.atlassian.net/wiki/rest/api/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ (() => {\n  const doc = $('Code: Confluence-Ziel aufbauen').item.json;\n  return JSON.stringify({\n    type: 'page',\n    title: doc.confluence_subfolder,\n    space: { key: doc.confluence_space_key },\n    ancestors: [{ id: doc.confluence_parent_page_id }],\n    body: {\n      storage: {\n        value: `<p>Dieser Ordner enthält alle ${doc.confluence_subfolder} für ${doc.source_name}.</p>`,\n        representation: 'storage'\n      }\n    }\n  });\n})() }}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000012",
+      "name": "Confluence: Unterseite erstellen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2360,
+        320
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const createdPage = $input.item.json;\nconst doc = $('Code: Confluence-Ziel aufbauen').item.json;\n\nreturn {\n  json: {\n    ...doc,\n    confluence_subfolder_id: createdPage.id\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000013",
+      "name": "Code: Neue Unterseiten-ID merken",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2580,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: $input.item.json };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000033",
+      "name": "Code: Subfolder zusammenführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const shareUrl = $input.item.json.onedrive_url || '';\nconst encoded = 'u!' + Buffer.from(shareUrl).toString('base64').replace(/=+$/, '').replace(/\\//g, '_').replace(/\\+/g, '-');\nreturn {\n  json: {\n    ...$input.item.json,\n    graph_download_url: `https://graph.microsoft.com/v1.0/shares/${encoded}/driveItem/content`\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000034",
+      "name": "Code: Graph Download-URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3020,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.graph_download_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf_binary"
+            }
+          }
+        }
+      },
+      "id": "bd000002-0000-0000-0000-000000000014",
+      "name": "HTTP: PDF von OneDrive laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3240,
+        120
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://blboardsolutions.atlassian.net/wiki/rest/api/content/' + $('Code: Subfolder zusammenführen').item.json.confluence_subfolder_id + '/child/attachment' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Atlassian-Token",
+              "value": "no-check"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "pdf_binary"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000015",
+      "name": "Confluence: PDF hochladen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3020,
+        220
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const doc = $('Loop: Dokumente').item.json;\nconst subfolder = $('Code: Subfolder zusammenführen').item.json;\n\nconst pageId = subfolder.confluence_subfolder_id || '';\nconst kunden_ids = doc.kunden_ids || [];\nconst notionProps = {};\n\n// For 'Beides' WITH Kunden: defer ConfluenceSync=true until after Kunden loop completes.\n// All other cases (Board, Individuell, Beides without Kunden): set it now.\nconst isBeidesMitKunden = doc.dokumenttyp === 'Beides' && kunden_ids.length > 0;\nif (!isBeidesMitKunden) {\n  notionProps['ConfluenceSync'] = { checkbox: true };\n}\nif (pageId) {\n  notionProps['Confluence PageID'] = { rich_text: [{ text: { content: pageId } }] };\n}\n\nreturn {\n  json: {\n    notion_page_id: doc.notion_page_id,\n    confluence_page_id: pageId,\n    dokumenttyp: doc.dokumenttyp,\n    kunden_ids: kunden_ids,\n    body: JSON.stringify({ properties: notionProps })\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000017",
+      "name": "Code: Notion-Update vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3460,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.notion_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000018",
+      "name": "Notion: ConfluenceSync setzen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3680,
+        220
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "kunden-check",
+              "leftValue": "={{ ($('Code: Notion-Update vorbereiten').item.json.kunden_ids || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000019",
+      "name": "IF: Dokumenttyp Beides",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3900,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const notionUpdate = $('Code: Notion-Update vorbereiten').first().json;\nconst docData = $('Loop: Dokumente').first().json;\nconst primaryData = $('Code: Primäre Quelle bestimmen').first().json;\nconst kundenIds = notionUpdate.kunden_ids || [];\nconst dokumenttyp = notionUpdate.dokumenttyp;\nconst primaryIsGruppe = primaryData.primary_is_gruppe === true;\n\nif (kundenIds.length === 0) {\n  return [{ json: { _no_kunden: true } }];\n}\n\n// Skip the first Kunden if the main flow already handled it:\n// - Always for 'Individuell' (primary = first Kunden)\n// - For 'Beides' only when gruppen_ids was empty (primary_is_gruppe=false → fell back to first Kunden)\nconst mainFlowUsedFirstKunde = dokumenttyp === 'Individuell' || (dokumenttyp === 'Beides' && !primaryIsGruppe);\nconst idsToProcess = mainFlowUsedFirstKunde ? kundenIds.slice(1) : kundenIds;\n\nif (idsToProcess.length === 0) {\n  return [{ json: { _no_kunden: true } }];\n}\n\nreturn idsToProcess.map(id => ({\n  json: {\n    kunden_id: id,\n    primary_page_data: {\n      notion_page_id: notionUpdate.notion_page_id,\n      confluence_page_id: notionUpdate.confluence_page_id,\n      onedrive_url: docData.onedrive_url || '',\n      typ: docData.typ || 'Protokoll',\n      title: docData.title || '',\n      meeting_datum: docData.meeting_datum || null\n    }\n  }\n}));"
+      },
+      "id": "bd000002-0000-0000-0000-000000000020",
+      "name": "Code: Kunden aufteilen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4120,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000021",
+      "name": "Loop: Kunden-Spaces",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4340,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.kunden_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000022",
+      "name": "Notion: Kunden-Seite laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4560,
+        120
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const kundenPage = $input.item.json;\nconst loopData = $('Loop: Kunden-Spaces').item.json;\nconst primary = loopData.primary_page_data;\n\nconst props = kundenPage.properties;\nconst getText = (p) => p?.rich_text?.[0]?.plain_text || p?.text?.[0]?.plain_text || '';\n\nconst spaceKey = getText(props['ConfluenceSpaceKey']) || getText(props['Confluence Space Key']) || '';\nconst parentId = getText(props['Confluence PageID']) || '';\nconst sourceName = props.Name?.title?.[0]?.plain_text || '';\nconst subfolderName = primary.typ === 'Agenda' ? 'Agenda PAB' : 'Protokolle PAB';\n\nconst missingFields = [];\nif (!spaceKey) missingFields.push('ConfluenceSpaceKey');\nif (!parentId) missingFields.push('Confluence PageID');\n\nreturn {\n  json: {\n    kunden_space_key: spaceKey,\n    kunden_parent_id: parentId,\n    kunden_subfolder_name: subfolderName,\n    source_name: sourceName,\n    notion_page_id: primary.notion_page_id || '',\n    existing_confluence_page_id: primary.confluence_page_id || '',\n    onedrive_url: primary.onedrive_url || '',\n    typ: primary.typ || 'Protokoll',\n    title: primary.title || '',\n    meeting_datum: primary.meeting_datum || null,\n    _config_missing: missingFields.length > 0,\n    _config_missing_fields: missingFields\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000023",
+      "name": "Code: Kunden-Confluence-Ziel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4780,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://blboardsolutions.atlassian.net/wiki/rest/api/content?title=${encodeURIComponent($json.kunden_subfolder_name)}&spaceKey=${$json.kunden_space_key}&type=page&expand=version` }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000024",
+      "name": "Confluence: Kunden-Unterseite prüfen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5200,
+        120
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const subfolder = $('Code: Kunden-Subfolder zusammenführen').item.json;\nconst subfolderId = subfolder.kunden_subfolder_id || '';\nconst notionPageId = subfolder.notion_page_id || '';\nconst existingId = subfolder.existing_confluence_page_id || '';\nconst allIds = [existingId, subfolderId].filter(Boolean).join(',');\n\nreturn {\n  json: {\n    notion_page_id: notionPageId,\n    all_page_ids: allIds\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000025",
+      "name": "Code: Alle Page-IDs sammeln",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5220,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 0.5,
+        "unit": "seconds"
+      },
+      "id": "bd000002-0000-0000-0000-000000000026",
+      "name": "Wait: Kunden 300ms",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5440,
+        120
+      ],
+      "webhookId": "bd000002-0000-0000-0000-000000000026"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.notion_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ properties: { 'Confluence PageID': { rich_text: [{ text: { content: $json.all_page_ids } }] } } }) }}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000027",
+      "name": "Notion: Alle Confluence-IDs zurückschreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5660,
+        120
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 0.5,
+        "unit": "seconds"
+      },
+      "id": "bd000002-0000-0000-0000-000000000028",
+      "name": "Wait: 500ms",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5880,
+        320
+      ],
+      "webhookId": "bd000002-0000-0000-0000-000000000028"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  confluence_space_key: d.confluence_space_key || 'LEER',\n  confluence_parent_page_id: d.confluence_parent_page_id || 'LEER',\n  confluence_subfolder: d.confluence_subfolder || 'LEER',\n  onedrive_url: (d.onedrive_url || 'LEER').substring(0, 100),\n  config_missing: d._config_missing,\n  missing_fields: d._config_missing_fields\n};\nconsole.log('[DEBUG 1 - Confluence Ziel]', JSON.stringify(info));\nreturn { json: { ...d, _debug_ziel: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000035",
+      "name": "Debug: Confluence-Ziel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1810,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  response_size: d.size,\n  results_count: (d.results || []).length,\n  first_result_id: d.results?.[0]?.id || 'KEINE',\n  first_result_title: d.results?.[0]?.title || 'KEINE',\n  raw_keys: Object.keys(d).join(', ')\n};\nconsole.log('[DEBUG 2 - Suche Ergebnis]', JSON.stringify(info));\nreturn { json: { ...d, _debug_suche: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000036",
+      "name": "Debug: Suche-Ergebnis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2500,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  confluence_subfolder_id: d.confluence_subfolder_id || 'LEER',\n  confluence_subfolder: d.confluence_subfolder || 'LEER',\n  onedrive_url: (d.onedrive_url || 'LEER').substring(0, 100)\n};\nconsole.log('[DEBUG 3 - Subfolder ID]', JSON.stringify(info));\nreturn { json: { ...d, _debug_subfolder: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000037",
+      "name": "Debug: Subfolder-ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2910,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  graph_download_url: d.graph_download_url || 'LEER',\n  onedrive_url_raw: (d.onedrive_url || 'LEER').substring(0, 100)\n};\nconsole.log('[DEBUG 4 - Graph URL]', JSON.stringify(info));\nreturn { json: { ...d, _debug_graph: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000039",
+      "name": "Debug: Graph-URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3130,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  status_code: d.statusCode || d.status || 'unbekannt',\n  result_id: d.id || d.results?.[0]?.id || 'KEINE',\n  result_title: d.title || d.results?.[0]?.title || 'KEINE',\n  error_message: d.message || d.errorMessage || d.data?.message || null,\n  raw_keys: Object.keys(d).join(', ')\n};\nconsole.log('[DEBUG 5 - Upload Status]', JSON.stringify(info));\nreturn { json: { ...d, _debug_upload: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000038",
+      "name": "Debug: Upload-Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3350,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "no-kunden-check",
+              "leftValue": "={{ $json._no_kunden }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000053",
+      "name": "IF: Hat ausstehende Kunden",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4340,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "kunden-subfolder-exists",
+              "leftValue": "={{ $json.size }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000042",
+      "name": "IF: Kunden-Unterseite existiert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5620,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const results = $input.item.json.results || [];\nconst prev = $('Code: Kunden-Confluence-Ziel').item.json;\nreturn {\n  json: {\n    ...prev,\n    kunden_subfolder_id: results[0]?.id || ''\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000043",
+      "name": "Code: Kunden-Unterseiten-ID extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://blboardsolutions.atlassian.net/wiki/rest/api/content",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ (() => { const d = $('Code: Kunden-Confluence-Ziel').item.json; return JSON.stringify({ type: 'page', title: d.kunden_subfolder_name, space: { key: d.kunden_space_key }, ancestors: [{ id: d.kunden_parent_id }], body: { storage: { value: `<p>Dieser Ordner enthält alle ${d.kunden_subfolder_name} für ${d.source_name}.</p>`, representation: 'storage' } } }); })() }}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000044",
+      "name": "Confluence: Kunden-Unterseite erstellen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5840,
+        320
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const createdPage = $input.item.json;\nconst prev = $('Code: Kunden-Confluence-Ziel').item.json;\nreturn {\n  json: {\n    ...prev,\n    kunden_subfolder_id: createdPage.id || ''\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000045",
+      "name": "Code: Kunden-Neue-Subfolder-ID merken",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6060,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return { json: $input.item.json };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000046",
+      "name": "Code: Kunden-Subfolder zusammenführen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6280,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst shareUrl = d.onedrive_url || '';\nconst encoded = 'u!' + Buffer.from(shareUrl).toString('base64').replace(/=+$/, '').replace(/\\//g, '_').replace(/\\+/g, '-');\nreturn {\n  json: {\n    ...d,\n    kunden_graph_url: `https://graph.microsoft.com/v1.0/shares/${encoded}/driveItem/content`\n  }\n};"
+      },
+      "id": "bd000002-0000-0000-0000-000000000047",
+      "name": "Code: Kunden-Graph Download-URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6500,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.kunden_graph_url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf_binary"
+            }
+          }
+        }
+      },
+      "id": "bd000002-0000-0000-0000-000000000048",
+      "name": "HTTP: Kunden-PDF laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6720,
+        120
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://blboardsolutions.atlassian.net/wiki/rest/api/content/' + $('Code: Kunden-Subfolder zusammenführen').item.json.kunden_subfolder_id + '/child/attachment' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Atlassian-Token",
+              "value": "no-check"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "pdf_binary"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000049",
+      "name": "Confluence: Kunden-PDF hochladen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6940,
+        120
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  kunden_space_key: d.kunden_space_key || 'LEER',\n  kunden_parent_id: d.kunden_parent_id || 'LEER',\n  kunden_subfolder_name: d.kunden_subfolder_name || 'LEER',\n  onedrive_url: (d.onedrive_url || 'LEER').substring(0, 100),\n  config_missing: d._config_missing,\n  missing_fields: d._config_missing_fields\n};\nconsole.log('[DEBUG K1 - Kunden Ziel]', JSON.stringify(info));\nreturn { json: { ...d, _debug_kunden_ziel: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000050",
+      "name": "Debug: Kunden-Ziel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5000,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  response_size: d.size,\n  results_count: (d.results || []).length,\n  first_result_id: d.results?.[0]?.id || 'KEINE',\n  first_result_title: d.results?.[0]?.title || 'KEINE'\n};\nconsole.log('[DEBUG K2 - Kunden Suche]', JSON.stringify(info));\nreturn { json: { ...d, _debug_kunden_suche: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000051",
+      "name": "Debug: Kunden-Suche",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5420,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const d = $input.item.json;\nconst info = {\n  status_code: d.statusCode || d.status || 'unbekannt',\n  result_id: d.id || d.results?.[0]?.id || 'KEINE',\n  error_message: d.message || d.errorMessage || d.data?.message || null,\n  raw_keys: Object.keys(d).join(', ')\n};\nconsole.log('[DEBUG K3 - Kunden Upload]', JSON.stringify(info));\nreturn { json: { ...d, _debug_kunden_upload: info } };"
+      },
+      "id": "bd000002-0000-0000-0000-000000000052",
+      "name": "Debug: Kunden-Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7160,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst first = items[0]?.json || {};\n\n// n8n splitInBatches DONE may send different item shapes depending on version:\n// A) Original loop-input items: { kunden_id, primary_page_data: { notion_page_id } }\n// B) Feedback items = Notion PATCH response: { id: UUID, object: 'page', ... }\nconst notionPageId =\n  first.primary_page_data?.notion_page_id ||\n  (first.object === 'page' ? first.id : null) ||\n  '';\n\nconsole.log('[BEIDES-SYNC] items:', items.length, 'notionPageId:', notionPageId, 'first.object:', first.object, 'keys:', Object.keys(first).slice(0, 6).join(','));\n\nreturn [{\n  json: {\n    notion_page_id: notionPageId || null,\n    _skip: !notionPageId,\n    body: notionPageId\n      ? JSON.stringify({ properties: { 'ConfluenceSync': { checkbox: true } } })\n      : '{}'\n  }\n}];"
+      },
+      "id": "bd000002-0000-0000-0000-000000000054",
+      "name": "Code: Beides-Sync vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $json.notion_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "bd000002-0000-0000-0000-000000000055",
+      "name": "Notion: Beides-ConfluenceSync setzen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4780,
+        320
+      ],
+      "continueOnFail": true,
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.label_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ '[{\"prefix\":\"global\",\"name\":\"' + $json.label_name + '\"}]' }}",
+        "options": {}
+      },
+      "id": "bd000002-label-main-0001",
+      "name": "Confluence: Label hinzufügen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3460,
+        220
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.label_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ '[{\"prefix\":\"global\",\"name\":\"' + $json.label_name + '\"}]' }}",
+        "options": {}
+      },
+      "id": "bd000002-label-kunden-0001",
+      "name": "Confluence: Kunden-Label hinzufügen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7360,
+        120
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Wenn Upload fehlschlug (continueOnFail), enthält der Input einen 'error'-Key\nvar inputJson = $input.item.json;\nif (inputJson.error) {\n  console.log('[LABEL] Upload fehlgeschlagen – Label wird übersprungen:', JSON.stringify(inputJson.error).substring(0, 100));\n  return { json: { _skip_label: true } };\n}\n\n// Attachment-ID aus erfolgreichem Upload-Response holen\nvar attachmentId = '';\ntry {\n  attachmentId = (inputJson.results && inputJson.results[0] && inputJson.results[0].id)\n    || inputJson.id || '';\n} catch(e) {}\n\nvar typ = '';\ntry { typ = $('Loop: Dokumente').item.json.typ || 'Protokoll'; } catch(e) { typ = 'Protokoll'; }\nvar labelName = typ.toLowerCase() === 'agenda' ? 'agenda' : 'protokoll';\n\nconsole.log('[LABEL] attachmentId:', attachmentId, '| labelName:', labelName);\nif (!attachmentId) {\n  console.log('[LABEL] Keine Attachment-ID – übersprungen. Keys:', Object.keys(inputJson).join(', '));\n  return { json: { _skip_label: true } };\n}\n\nreturn { json: {\n  label_page_id: attachmentId,\n  label_name: labelName,\n  label_url: 'https://blboardsolutions.atlassian.net/wiki/rest/api/content/' + attachmentId + '/label'\n} };"
+      },
+      "id": "bd000002-label-prep-main",
+      "name": "Code: Label vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3240,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Attachment-ID aus Kunden-Upload-Response holen\nvar attachmentId = '';\ntry {\n  var res = $input.item.json;\n  attachmentId = (res.results && res.results[0] && res.results[0].id)\n    || res.id || '';\n} catch(e) {}\n\n// Fallback: Kunden-Unterordner-ID (falls Upload fehlschlug oder Anhang existierte)\nif (!attachmentId) {\n  try { attachmentId = $('Code: Kunden-Subfolder zusammenführen').item.json.kunden_subfolder_id || ''; } catch(e) {}\n}\n\nvar typ = '';\ntry { typ = $('Loop: Dokumente').item.json.typ || 'Protokoll'; } catch(e) { typ = 'Protokoll'; }\nvar labelName = typ.toLowerCase() === 'agenda' ? 'agenda' : 'protokoll';\n\nconsole.log('[LABEL Kunden] id:', attachmentId, '| label:', labelName);\n\n// Kein ID gefunden: Label überspringen (kein Fehler)\nif (!attachmentId) {\n  return { json: { _skip_label: true, label_url: null, label_name: null } };\n}\n\nreturn { json: {\n  label_page_id: attachmentId,\n  label_name: labelName,\n  label_url: 'https://blboardsolutions.atlassian.net/wiki/rest/api/content/' + attachmentId + '/label'\n} };"
+      },
+      "id": "bd000002-label-prep-kunden",
+      "name": "Code: Kunden-Label vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7140,
+        120
+      ]
+    },
+    {
+      "id": "bd-arch-001",
+      "name": "Notion: Archiv-Dokumente laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -200,
+        620
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/619275ab2b7a4051a8f34c7519a7bc83/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"filter\": {\"and\": [{\"property\": \"Status\", \"select\": {\"equals\": \"Archiv\"}}, {\"property\": \"ConfluenceSync\", \"checkbox\": {\"equals\": false}}, {\"property\": \"Confluence PageID\", \"rich_text\": {\"is_not_empty\": true}}]}, \"page_size\": 50}",
+        "options": {}
+      },
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "id": "bd-arch-002",
+      "name": "Code: Archiv aufbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        40,
+        620
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const results = ($input.first().json.results || []);\nif (results.length === 0) return [{ json: { _kein_archiv: true } }];\n\nconst items = [];\nfor (const page of results) {\n  const props = page.properties;\n  const title = props.Titel?.title?.[0]?.plain_text || '';\n  const idsRaw = props['Confluence PageID']?.rich_text?.[0]?.plain_text || '';\n  // Jede kommaseparierte ID als eigenes Item\n  const ids = idsRaw.split(',').map(function(s){return s.trim();}).filter(Boolean);\n  for (const cId of ids) {\n    items.push({ json: {\n      notion_page_id: page.id,\n      title: title,\n      confluence_id: cId\n    }});\n  }\n}\nreturn items.length > 0 ? items : [{ json: { _kein_archiv: true } }];"
+      }
+    },
+    {
+      "id": "bd-arch-003",
+      "name": "IF: Hat Archiv-Dokumente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        260,
+        620
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "arch-check",
+              "leftValue": "={{ $json._kein_archiv }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bd-arch-004",
+      "name": "Loop: Archiv-Dokumente",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        480,
+        520
+      ],
+      "parameters": {
+        "options": {}
+      }
+    },
+    {
+      "id": "bd-arch-006",
+      "name": "Notion: Archiv bereinigen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        520
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://api.notion.com/v1/pages/' + $('Loop: Archiv-Dokumente').item.json.notion_page_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "{\"properties\": {\"Confluence PageID\": {\"rich_text\": []}, \"ConfluenceSync\": {\"checkbox\": true}}}",
+        "options": {}
+      },
+      "credentials": {
+        "notionApi": {
+          "id": "NnTc9kDS62fncKVA",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "id": "bd-arch-srch",
+      "name": "HTTP: Confluence Anhang suchen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        700,
+        420
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.confluence_id }}/child/attachment?limit=100",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "id": "bd-arch-xtr",
+      "name": "Code: Anhang-ID extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const loopItem = $('Loop: Archiv-Dokumente').item.json;\nconst results = ($input.item.json.results || []);\n\n// Exakten Anhang per Dateiname finden\nconst match = results.find(function(att) {\n  return att.title === loopItem.filename;\n});\n\n// Fallback: ersten PDF-Anhang nehmen falls kein Namens-Match\nconst fallback = results.find(function(att) {\n  return (att.title || '').toLowerCase().endsWith('.pdf');\n});\n\nconst attachmentId = (match || fallback || {}).id || '';\nconsole.log('[ARCHIV] Datei:', loopItem.filename, '| Match:', !!match, '| Fallback:', !!fallback, '| ID:', attachmentId || '-');\n\nreturn { json: {\n  notion_page_id: loopItem.notion_page_id,\n  filename: loopItem.filename,\n  attachment_id: attachmentId,\n  has_attachment: !!attachmentId\n} };"
+      }
+    },
+    {
+      "id": "bd-arch-if2",
+      "name": "IF: Anhang gefunden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1140,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "arch-att2",
+              "leftValue": "={{ $json.has_attachment }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bd-arch-del2",
+      "name": "Confluence: Anhang löschen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        320
+      ],
+      "continueOnFail": true,
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://blboardsolutions.atlassian.net/wiki/rest/api/content/{{ $json.attachment_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {}
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "OncAUjZtrqWedJug",
+          "name": "Unnamed credential 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Alle 10 Minuten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Zu synchronisierende Dokumente laden",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion: Archiv-Dokumente laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Zu synchronisierende Dokumente laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Dokumente aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Dokumente aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "IF: Hat Dokumente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Hat Dokumente": {
+      "main": [
+        [
+          {
+            "node": "Loop: Dokumente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Loop: Dokumente": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Code: Primäre Quelle bestimmen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Primäre Quelle bestimmen": {
+      "main": [
+        [
+          {
+            "node": "Notion: Quellen-Seite laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Quellen-Seite laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Confluence-Ziel aufbauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Confluence-Ziel aufbauen": {
+      "main": [
+        [
+          {
+            "node": "Debug: Confluence-Ziel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Confluence-Ziel": {
+      "main": [
+        [
+          {
+            "node": "Guard: Confluence-Config prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard: Confluence-Config prüfen": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Unterseite prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Fehler markieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Fehler markieren": {
+      "main": [
+        [
+          {
+            "node": "Wait: 500ms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Unterseite prüfen": {
+      "main": [
+        [
+          {
+            "node": "Debug: Suche-Ergebnis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Suche-Ergebnis": {
+      "main": [
+        [
+          {
+            "node": "IF: Unterseite existiert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Unterseite existiert": {
+      "main": [
+        [
+          {
+            "node": "Code: Unterseiten-ID extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confluence: Unterseite erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Unterseiten-ID extrahieren": {
+      "main": [
+        [
+          {
+            "node": "Code: Subfolder zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Unterseite erstellen": {
+      "main": [
+        [
+          {
+            "node": "Code: Neue Unterseiten-ID merken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Neue Unterseiten-ID merken": {
+      "main": [
+        [
+          {
+            "node": "Code: Subfolder zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Subfolder zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "Debug: Subfolder-ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Subfolder-ID": {
+      "main": [
+        [
+          {
+            "node": "Code: Graph Download-URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Graph Download-URL": {
+      "main": [
+        [
+          {
+            "node": "Debug: Graph-URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Graph-URL": {
+      "main": [
+        [
+          {
+            "node": "HTTP: PDF von OneDrive laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: PDF von OneDrive laden": {
+      "main": [
+        [
+          {
+            "node": "Confluence: PDF hochladen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: PDF hochladen": {
+      "main": [
+        [
+          {
+            "node": "Debug: Upload-Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Upload-Status": {
+      "main": [
+        [
+          {
+            "node": "Code: Label vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Notion-Update vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Notion: ConfluenceSync setzen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: ConfluenceSync setzen": {
+      "main": [
+        [
+          {
+            "node": "IF: Dokumenttyp Beides",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Dokumenttyp Beides": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden aufteilen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait: 500ms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden aufteilen": {
+      "main": [
+        [
+          {
+            "node": "IF: Hat ausstehende Kunden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Hat ausstehende Kunden": {
+      "main": [
+        [
+          {
+            "node": "Loop: Kunden-Spaces",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait: 500ms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Kunden-Spaces": {
+      "main": [
+        [
+          {
+            "node": "Code: Beides-Sync vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Kunden-Seite laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Beides-Sync vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Notion: Beides-ConfluenceSync setzen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Beides-ConfluenceSync setzen": {
+      "main": [
+        [
+          {
+            "node": "Wait: 500ms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Kunden-Seite laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Confluence-Ziel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-Confluence-Ziel": {
+      "main": [
+        [
+          {
+            "node": "Debug: Kunden-Ziel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Kunden-Ziel": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Kunden-Unterseite prüfen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Kunden-Unterseite prüfen": {
+      "main": [
+        [
+          {
+            "node": "Debug: Kunden-Suche",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Kunden-Suche": {
+      "main": [
+        [
+          {
+            "node": "IF: Kunden-Unterseite existiert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Kunden-Unterseite existiert": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Unterseiten-ID extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confluence: Kunden-Unterseite erstellen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-Unterseiten-ID extrahieren": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Subfolder zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Kunden-Unterseite erstellen": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Neue-Subfolder-ID merken",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-Neue-Subfolder-ID merken": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Subfolder zusammenführen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-Subfolder zusammenführen": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Graph Download-URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-Graph Download-URL": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Kunden-PDF laden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Kunden-PDF laden": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Kunden-PDF hochladen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Kunden-PDF hochladen": {
+      "main": [
+        [
+          {
+            "node": "Debug: Kunden-Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debug: Kunden-Upload": {
+      "main": [
+        [
+          {
+            "node": "Code: Kunden-Label vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Alle Page-IDs sammeln": {
+      "main": [
+        [
+          {
+            "node": "Notion: Alle Confluence-IDs zurückschreiben",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Alle Confluence-IDs zurückschreiben": {
+      "main": [
+        [
+          {
+            "node": "Wait: Kunden 300ms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: Kunden 300ms": {
+      "main": [
+        [
+          {
+            "node": "Loop: Kunden-Spaces",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait: 500ms": {
+      "main": [
+        [
+          {
+            "node": "Loop: Dokumente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Label hinzufügen": {
+      "main": [
+        [
+          {
+            "node": "Code: Notion-Update vorbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Kunden-Label hinzufügen": {
+      "main": [
+        [
+          {
+            "node": "Code: Alle Page-IDs sammeln",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Label vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Label hinzufügen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Kunden-Label vorbereiten": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Kunden-Label hinzufügen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Archiv-Dokumente laden": {
+      "main": [
+        [
+          {
+            "node": "Code: Archiv aufbereiten",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Archiv aufbereiten": {
+      "main": [
+        [
+          {
+            "node": "IF: Hat Archiv-Dokumente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Hat Archiv-Dokumente?": {
+      "main": [
+        [
+          {
+            "node": "Loop: Archiv-Dokumente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Loop: Archiv-Dokumente": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP: Confluence Anhang suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion: Archiv bereinigen": {
+      "main": [
+        [
+          {
+            "node": "Loop: Archiv-Dokumente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP: Confluence Anhang suchen": {
+      "main": [
+        [
+          {
+            "node": "Code: Anhang-ID extrahieren",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Anhang-ID extrahieren": {
+      "main": [
+        [
+          {
+            "node": "IF: Anhang gefunden?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Anhang gefunden?": {
+      "main": [
+        [
+          {
+            "node": "Confluence: Anhang löschen",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notion: Archiv bereinigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confluence: Anhang löschen": {
+      "main": [
+        [
+          {
+            "node": "Notion: Archiv bereinigen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "maxConcurrency": 1
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": [
+    {
+      "name": "Board Dokumente"
+    }
+  ]
+}
