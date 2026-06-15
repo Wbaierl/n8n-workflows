@@ -1,0 +1,404 @@
+{
+  "name": "Email_Analyse",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "foldersToInclude": [
+            "AQMkADM0NzFkNDAzLTMxNDItNGNhOC1hZDQyLTcxM2Y0ZDdmYmFiNQAuAAADosScSFkDYUG7FZOJbLMzpgEAids1UVQBH0GRdF6SMZxTjgAAAgEMAAAA"
+          ],
+          "readStatus": "unread"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlookTrigger",
+      "typeVersion": 1,
+      "position": [
+        -16,
+        -656
+      ],
+      "id": "38e0ce4a-3de7-426c-ba04-09f173f94214",
+      "name": "Microsoft Outlook Trigger",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messageAttachment",
+        "operation": "getAll",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $('Microsoft Outlook Trigger').item.json.id }}",
+          "mode": "id"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        192,
+        -656
+      ],
+      "id": "761c8281-7451-4804-b3fc-24fe03c8f2b1",
+      "name": "Get many attachments",
+      "webhookId": "8874763c-978e-46a6-857f-8eba9cb54bea",
+      "alwaysOutputData": true,
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messageAttachment",
+        "operation": "download",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $('Microsoft Outlook Trigger').item.json.id }}",
+          "mode": "id"
+        },
+        "attachmentId": {
+          "__rl": true,
+          "value": "={{ $json[\"id\"] }}",
+          "mode": "id"
+        },
+        "binaryPropertyName": "=data"
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -672
+      ],
+      "id": "45ad37a7-c70e-45f0-a42d-ff99913d2038",
+      "name": "Download an attachment",
+      "webhookId": "84e7e5ad-ff3b-4689-b764-1c8b9ec1b9e0",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5901f6a3-7309-4ca3-942e-ba87a727c86f",
+              "leftValue": "={{ $json[\"contentType\"] }}",
+              "rightValue": "application/pdf",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "87867c74-07ec-40bb-a3de-17833718c29a",
+              "leftValue": "={{ $json[\"size\"] }}",
+              "rightValue": 10000,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        -656
+      ],
+      "id": "296a0be6-d397-447e-a379-ba1159734495",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $node[\"Microsoft Outlook Trigger\"].json[\"id\"] }}",
+          "mode": "id"
+        },
+        "updateFields": {
+          "isRead": true
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        -752
+      ],
+      "id": "b310bfc7-7222-434d-98de-c48a16ed6401",
+      "name": "Update a message",
+      "webhookId": "9a6fef21-dd6d-4fc1-b0f4-7a4c0c28480c",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const messageId = $('Microsoft Outlook Trigger').item.json.id;\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -752
+      ],
+      "id": "b6aed71f-10de-4db7-96a4-b1b18c808e36",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "394974fb-867e-49e8-8f34-2f9b085090fc",
+              "leftValue": "={{ $('Microsoft Outlook Trigger').item.json.subject }}",
+              "rightValue": "[Rr]echnung|[Ii]nvoice|[Bb]eleg|[Ff]aktura",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        -624
+      ],
+      "id": "9374d596-9652-46d2-892f-5b8a727b67f4",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "toRecipients": "wolfgang.baierl@blboardsolutions.de",
+        "subject": "=📄 Neue Rechnung eingegangen: {{ $('Microsoft Outlook Trigger').item.json.subject }}",
+        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $('Microsoft Outlook Trigger').item.json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $('Microsoft Outlook Trigger').item.json.from }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
+        "additionalFields": {
+          "bodyContentType": "html"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -752
+      ],
+      "id": "77d2fd21-495a-4f2f-8c3e-feccafb3666c",
+      "name": "Send a message",
+      "webhookId": "311cef29-e8f1-46e4-bd88-58488ebc5af4",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "messageId": {
+          "__rl": true,
+          "value": "={{ $node[\"Microsoft Outlook Trigger\"].json[\"id\"] }}",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "AAMkADM0NzFkNDAzLTMxNDItNGNhOC1hZDQyLTcxM2Y0ZDdmYmFiNQAuAAAAAACixJxIWQNhQbsVk4lsszOmAQCJ2zVRVAEfQZF0XpIxnFOOAACU9LKZAAA=",
+          "mode": "id"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        1536,
+        -752
+      ],
+      "id": "42f76c21-fd33-4c17-bf98-d38dbfd21a37",
+      "name": "Move a message",
+      "webhookId": "5ed747f9-4c2c-4e1f-bd05-2865ace72d7d",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $now.format('yyyy-MM') }}_{{ $node[\"Microsoft Outlook Trigger\"].json[\"from\"][\"emailAddress\"][\"address\"] }}_{{ $json[\"name\"] }}",
+        "parentId": "01GSL5MYGZXFPDTJTV7RB3IFSPNDK3VTN5",
+        "binaryData": true
+      },
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        -752
+      ],
+      "id": "9753cf68-819a-4d9b-999d-fd8d0755a6a4",
+      "name": "Upload a file",
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Microsoft Outlook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many attachments",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many attachments": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Download an attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download an attachment": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a message": {
+      "main": [
+        [
+          {
+            "node": "Move a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Update a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move a message": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "50575326-7908-487a-b540-3cb1e5780a5c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c609af0a939ee4a15654c996b02f39de6b81cb5d8d4c68371052e91ce5822d22"
+  },
+  "id": "0WyvK9Sc32FhHGXQ",
+  "tags": []
+}
