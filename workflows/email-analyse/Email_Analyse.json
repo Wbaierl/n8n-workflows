@@ -183,21 +183,22 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict",
-            "version": 3
+            "typeValidation": "loose",
+            "version": 2
           },
+          "combinator": "and",
           "conditions": [
             {
-              "id": "394974fb-867e-49e8-8f34-2f9b085090fc",
-              "leftValue": "={{ $('Microsoft Outlook Trigger').item.json.subject }}",
-              "rightValue": "[Rr]echnung|[Ii]nvoice|[Bb]eleg|[Ff]aktura",
+              "id": "kw-match",
               "operator": {
-                "type": "string",
-                "operation": "regex"
-              }
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "leftValue": "={{ /rechnung|invoice/i.test( ($('Microsoft Outlook Trigger').item.json.subject || '') + ' ' + ($('Microsoft Outlook Trigger').item.json.bodyPreview || '') + ' ' + ((($('Microsoft Outlook Trigger').item.json.body || {}).content) || '') + ' ' + ($json.name || '') ) }}",
+              "rightValue": ""
             }
-          ],
-          "combinator": "and"
+          ]
         },
         "options": {}
       },
@@ -268,7 +269,7 @@
     {
       "parameters": {
         "fileName": "={{ $now.format('yyyy-MM') }}_{{ $node[\"Microsoft Outlook Trigger\"].json[\"from\"][\"emailAddress\"][\"address\"] }}_{{ $json[\"name\"] }}",
-        "parentId": "01GSL5MYGZXFPDTJTV7RB3IFSPNDK3VTN5",
+        "parentId": "={{ $('OneDrive: Ordner auflösen').first().json.id }}",
         "binaryData": true
       },
       "type": "n8n-nodes-base.microsoftOneDrive",
@@ -285,6 +286,29 @@
           "name": "Microsoft Drive account"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me/drive/root:/BLBoardSolutionsGmbH/Rechnungen",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "options": {}
+      },
+      "id": "onedrive-resolve-folder",
+      "name": "OneDrive: Ordner auflösen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -16,
+        -436
+      ],
+      "credentials": {
+        "microsoftOneDriveOAuth2Api": {
+          "id": "9Ytar7NmBEFxr6Yz",
+          "name": "Microsoft Drive account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -294,6 +318,11 @@
         [
           {
             "node": "Get many attachments",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OneDrive: Ordner auflösen",
             "type": "main",
             "index": 0
           }

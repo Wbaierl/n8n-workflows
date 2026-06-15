@@ -12,6 +12,7 @@ Datei: `Email_Analyse.json` · Status im Export: **aktiv**
 
 ```
 Microsoft Outlook Trigger  (Postfach-Ordner, ungelesen, Poll: jede Minute)
+        ├─────────────▶ OneDrive: Ordner auflösen  (ID von …/Rechnungen per Pfad)
         ↓
 Get many attachments       (alle Anhänge der getriggerten Mail)
         ↓
@@ -19,9 +20,9 @@ If  ── PDF & > 10 KB? ──────── nein ─▶ Ende (Mail bleibt
         ↓ ja
 Download an attachment     (PDF als Binary 'data')
         ↓
-If1 ── Betreff = Rechnung? ── nein ─▶ Ende
+If1 ── "Rechnung"/"Invoice" in Betreff, Text ODER Dateiname? ── nein ─▶ Ende
         ↓ ja
-Upload a file              (→ OneDrive)
+Upload a file              (→ OneDrive-Ordner …/Rechnungen, per Pfad aufgelöst)
         ↓
 Code in JavaScript         (Durchreiche / messageId)
         ↓
@@ -39,11 +40,12 @@ Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 | # | Knoten | Typ | Funktion |
 |---|---|---|---|
 | 1 | Microsoft Outlook Trigger | Outlook Trigger | Pollt jede Minute einen festen Postfach-Ordner, nur **ungelesene** Nachrichten |
+| – | OneDrive: Ordner auflösen | HTTP (Graph) | Parallel ab Trigger: ermittelt die ID des Zielordners `…/Rechnungen` per Pfad |
 | 2 | Get many attachments | Outlook | Holt alle Anhänge (`messageAttachment / getAll`) der getriggerten Mail |
 | 3 | If | If | Filter: `contentType` enthält `application/pdf` **und** `size > 10000` Bytes |
 | 4 | Download an attachment | Outlook | Lädt den Anhang als Binary `data` herunter |
-| 5 | If1 | If | Betreff matcht Regex `[Rr]echnung\|[Ii]nvoice\|[Bb]eleg\|[Ff]aktura` |
-| 6 | Upload a file | OneDrive | Lädt die Datei in einen festen OneDrive-Ordner hoch |
+| 5 | If1 | If | „rechnung"/„invoice" (case-insensitive) in **Betreff, E-Mail-Text oder Anhang-Dateiname** |
+| 6 | Upload a file | OneDrive | Lädt die Datei in den aufgelösten OneDrive-Ordner `…/Rechnungen` hoch |
 | 7 | Code in JavaScript | Code | Durchreiche der Items (liest `messageId`) |
 | 8 | Update a message | Outlook | Setzt die Mail auf **gelesen** (`isRead: true`) |
 | 9 | Move a message | Outlook | Verschiebt die Mail in einen festen Zielordner |
@@ -52,8 +54,9 @@ Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 ### Filterlogik
 - **If (Knoten 3):** Nur echte PDF-Anhänge ab 10 KB werden weiterverarbeitet –
   kleine Inline-Bilder oder Signaturgrafiken fallen raus.
-- **If1 (Knoten 5):** Zusätzlich muss der Betreff ein Rechnungs-Stichwort
-  enthalten (Rechnung / Invoice / Beleg / Faktura, groß/klein).
+- **If1 (Knoten 5):** Zusätzlich muss „Rechnung" oder „Invoice" (groß/klein)
+  in **Betreff, E-Mail-Text (`bodyPreview`/`body.content`) oder
+  Anhang-Dateiname** vorkommen. Trifft eines zu, geht es weiter.
 - Die **Nein-Zweige** beider IF-Knoten sind nicht verbunden → passt eine Mail
   nicht, bleibt sie unangetastet (ungelesen, nicht verschoben).
 
@@ -74,8 +77,19 @@ einer anderen Umgebung angepasst werden:
 |---|---|---|
 | Outlook-Quellordner-ID (`foldersToInclude`) | Trigger | Postfach-Ordner, der überwacht wird |
 | Outlook-Zielordner-ID (`folderId`) | Move a message | Zielordner für verarbeitete Rechnungen |
-| OneDrive-Ordner-ID (`parentId`) | Upload a file | Zielordner für die PDFs |
+| OneDrive-Zielordner (Pfad) | OneDrive: Ordner auflösen | `BLBoardSolutionsGmbH/Rechnungen` im persönlichen OneDrive – per Graph zur ID aufgelöst |
 | Empfänger der Benachrichtigung | Send a message | aktuell `wolfgang.baierl@blboardsolutions.de` |
+
+> **OneDrive vs. SharePoint:** Der angegebene Link
+> `…-my.sharepoint.com/personal/wolfgang_baierl_blboardsolutions_de/Documents/…`
+> ist das **persönliche OneDrive for Business** von Wolfgang (nicht eine
+> geteilte Team-SharePoint-Bibliothek – die hätte die Form
+> `…sharepoint.com/sites/<Site>/…`). Deshalb löst der Knoten
+> „OneDrive: Ordner auflösen" den Pfad über
+> `GET /me/drive/root:/BLBoardSolutionsGmbH/Rechnungen` auf und der bestehende
+> OneDrive-Knoten lädt dorthin hoch. **Wäre** es doch eine Team-Bibliothek,
+> müsste auf `GET /sites/{site}/drive/root:/…` bzw. den SharePoint-Knoten
+> umgestellt werden – dann kurz Bescheid geben.
 
 ### Credentials
 - **Microsoft Outlook OAuth2** (`microsoftOutlookOAuth2Api`) – Knoten 1,2,4,8,9,10
