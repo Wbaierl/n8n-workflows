@@ -27,13 +27,15 @@ Download an attachment     (PDF als Binary 'data')
         ↓
 If1 ── "Rechnung"/"Invoice" in Betreff, Text ODER Dateiname? ── nein ─▶ Ende
         ↓ ja
-Upload a file              (→ OneDrive-Ordner …/Rechnungen, per Pfad aufgelöst)
+Upload a file              (pro Anhang → OneDrive …/Rechnungen)
         ↓
-Code in JavaScript         (Durchreiche / messageId)
+Stamp: Mail-Daten          (message_id, Betreff, Absender je Item festschreiben)
+        ↓
+Dedupe je Mail             (eine Zeile pro Nachricht – verhindert Mehrfach-Move)
         ↓
 Update a message           (Mail als gelesen markieren)
         ↓
-Move a message             (Mail in Zielordner verschieben)
+Move a message             (in Zielordner verschieben; fehlertolerant)
         ↓
 Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 ```
@@ -53,9 +55,10 @@ Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 | 4 | Download an attachment | Outlook | Lädt den Anhang als Binary `data` herunter |
 | 5 | If1 | If | „rechnung"/„invoice" (case-insensitive) in **Betreff, E-Mail-Text oder Anhang-Dateiname** |
 | 6 | Upload a file | OneDrive | Lädt die Datei in den aufgelösten OneDrive-Ordner `…/Rechnungen` hoch |
-| 7 | Code in JavaScript | Code | Durchreiche der Items (liest `messageId`) |
-| 8 | Update a message | Outlook | Setzt die Mail auf **gelesen** (`isRead: true`) |
-| 9 | Move a message | Outlook | Verschiebt die Mail in einen festen Zielordner |
+| 7a | Stamp: Mail-Daten | Set | Schreibt `message_id`, `subject`, `from_address` je Item fest (entkoppelt von Paired-Item) |
+| 7b | Dedupe je Mail | Code | Reduziert auf **eine Zeile pro Nachricht** (`message_id`) → Postfach-Aktionen laufen je Mail nur einmal |
+| 8 | Update a message | Outlook | Setzt die Mail auf **gelesen** (`isRead: true`), `messageId` aus `message_id` |
+| 9 | Move a message | Outlook | Verschiebt die Mail in den festen Zielordner; `onError: continue` (überspringt bereits verschobene) |
 | 10 | Send a message | Outlook | HTML-Benachrichtigung „📄 Neue Rechnung eingegangen" mit Betreff/Absender/Datum |
 
 ### Filterlogik
@@ -111,9 +114,10 @@ Beim Import in eine andere n8n-Instanz die Credentials neu zuweisen.
 
 - Der Code-Node (7) ist aktuell nur eine Durchreiche – Platz für künftige Logik
   (z. B. Metadaten extrahieren, in Buchhaltung/Notion eintragen).
-- Mehrere PDF-Anhänge in einer Mail werden je als eigenes Item verarbeitet;
-  Markieren/Verschieben der Mail läuft dann mehrfach auf dieselbe `messageId`
-  (idempotent, aber die Benachrichtigung kann mehrfach kommen).
+- Mehrere PDF-Anhänge in einer Mail: **jeder** PDF wird auf OneDrive geladen,
+  aber „gelesen/verschieben/Benachrichtigung" laufen dank **Dedupe je Mail** nur
+  **einmal pro Nachricht**. (Ohne Dedupe lief der zweite Move auf eine bereits
+  verschobene Mail → `404 ErrorItemNotFound`.)
 - Der Name „Email_Analyse" ist historisch; funktional handelt es sich um eine
   Rechnungs-Archivierung.
 

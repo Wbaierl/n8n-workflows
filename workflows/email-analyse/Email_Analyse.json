@@ -109,7 +109,7 @@
         "operation": "update",
         "messageId": {
           "__rl": true,
-          "value": "={{ $('Mail je Item').item.json[\"id\"] }}",
+          "value": "={{ $json.message_id }}",
           "mode": "id"
         },
         "updateFields": {
@@ -134,7 +134,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const messageId = $('Mail je Item').item.json.id;\n\nreturn $input.all();"
+        "jsCode": "// Eine Zeile pro Mail (Message-ID): gelesen/verschieben/Mail nur einmal je Nachricht.\nconst seen = new Set();\nconst out = [];\nfor (const item of $input.all()) {\n  const id = item.json.message_id;\n  if (id && !seen.has(id)) { seen.add(id); out.push(item); }\n}\nreturn out;\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -143,7 +143,7 @@
         -752
       ],
       "id": "b6aed71f-10de-4db7-96a4-b1b18c808e36",
-      "name": "Code in JavaScript"
+      "name": "Dedupe je Mail"
     },
     {
       "parameters": {
@@ -182,8 +182,8 @@
     {
       "parameters": {
         "toRecipients": "wolfgang.baierl@blboardsolutions.de",
-        "subject": "=📄 Neue Rechnung eingegangen: {{ $('Mail je Item').item.json.subject }}",
-        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $('Mail je Item').item.json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $('Mail je Item').item.json.from.emailAddress.address }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
+        "subject": "=📄 Neue Rechnung eingegangen: {{ $json.subject }}",
+        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $json.from_address }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
         "additionalFields": {
           "bodyContentType": "html"
         }
@@ -209,7 +209,7 @@
         "operation": "move",
         "messageId": {
           "__rl": true,
-          "value": "={{ $('Mail je Item').item.json[\"id\"] }}",
+          "value": "={{ $json.message_id }}",
           "mode": "id"
         },
         "folderId": {
@@ -232,7 +232,8 @@
           "id": "yGyJLxRrxa4zgBmg",
           "name": "Microsoft Outlook account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -352,6 +353,42 @@
         560,
         -656
       ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "message_id",
+              "type": "string",
+              "value": "={{ $('Mail je Item').item.json.id }}"
+            },
+            {
+              "id": "f2",
+              "name": "subject",
+              "type": "string",
+              "value": "={{ $('Mail je Item').item.json.subject }}"
+            },
+            {
+              "id": "f3",
+              "name": "from_address",
+              "type": "string",
+              "value": "={{ $('Mail je Item').item.json.from.emailAddress.address }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "stamp-mail",
+      "name": "Stamp: Mail-Daten",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        -752
+      ]
     }
   ],
   "pinData": {},
@@ -433,17 +470,6 @@
         ]
       ]
     },
-    "Code in JavaScript": {
-      "main": [
-        [
-          {
-            "node": "Update a message",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "If1": {
       "main": [
         [
@@ -470,7 +496,7 @@
       "main": [
         [
           {
-            "node": "Code in JavaScript",
+            "node": "Stamp: Mail-Daten",
             "type": "main",
             "index": 0
           }
@@ -482,6 +508,28 @@
         [
           {
             "node": "Graph: Ungelesene Mails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stamp: Mail-Daten": {
+      "main": [
+        [
+          {
+            "node": "Dedupe je Mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe je Mail": {
+      "main": [
+        [
+          {
+            "node": "Update a message",
             "type": "main",
             "index": 0
           }
