@@ -144,8 +144,14 @@ Täglich 08:00 UTC – prüft alle Termine mit `Status = "Agenda bereit"` und `A
 | 10 | Code: Payload aufbereiten | Code | Mitglieder + TOPs + Payload zusammenbauen |
 | 11 | HTTP: Agenda erzeugen | HTTP | POST 172.17.0.1:3001/generate |
 | 12 | HTTP: Notion aktualisieren | HTTP | PATCH /v1/pages/{id} – Status setzen |
-| 13 | Code in JavaScript | Code | Base64 → Binary für E-Mail-Anhang |
+| 13 | Code in JavaScript | Code | Base64 → Binary für E-Mail-Anhang (toleriert `file_base64`, `base64`, `fileBase64`) |
 | 14 | Send a message | Outlook | E-Mail mit Anhang versenden |
+
+> **Hinweis Anhang:** Der Node "Code in JavaScript" liest das Base64 der .docx
+> tolerant aus der Agenda-Server-Antwort – egal ob das Feld `file_base64`
+> (agenda-server.js), `base64` oder `fileBase64` heißt. Fehlt das Feld ganz,
+> bricht der Node mit einer Fehlermeldung ab, die die tatsächlichen
+> Antwortfelder auflistet (statt eine leere E-Mail zu versenden).
 
 ### Automatische TOP-Generierung
 
