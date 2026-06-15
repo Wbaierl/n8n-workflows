@@ -12,7 +12,8 @@ Datei: `Email_Analyse.json` · Status im Export: **aktiv**
 
 ```
 Schedule  (alle 15 Min)
-        ├─────────────▶ OneDrive: Ordner auflösen  (ID von …/Rechnungen per Pfad)
+        ↓
+OneDrive: Ordner auflösen  (ID von …/Rechnungen per Pfad – läuft zuerst!)
         ↓
 Graph: Ungelesene Mails    (Inbox, isRead=false UND hasAttachments=true)
         ↓
@@ -46,7 +47,7 @@ Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 | 1 | Schedule: alle 15 Min | Schedule | Startet den Sweep alle 15 Minuten |
 | 1b | Graph: Ungelesene Mails | HTTP (Graph) | Holt **alle** ungelesenen Inbox-Mails **mit Anhang** (`$filter=isRead eq false and hasAttachments eq true`) |
 | 1c | Mail je Item | Split Out | Zerlegt die `value`-Liste in ein Item pro Nachricht |
-| – | OneDrive: Ordner auflösen | HTTP (Graph) | Parallel ab Schedule: ermittelt die ID des Zielordners `…/Rechnungen` per Pfad |
+| 1d | OneDrive: Ordner auflösen | HTTP (Graph) | Läuft **vor** dem Mail-Abruf (in Reihe), ermittelt die ID des Zielordners `…/Rechnungen` per Pfad |
 | 2 | Get many attachments | Outlook | Holt alle Anhänge (`messageAttachment / getAll`) der Mail |
 | 3 | If | If | Filter: `contentType` enthält `application/pdf` **und** `size > 10000` Bytes |
 | 4 | Download an attachment | Outlook | Lädt den Anhang als Binary `data` herunter |

@@ -268,8 +268,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -16,
-        -436
+        120,
+        -656
       ],
       "credentials": {
         "microsoftOneDriveOAuth2Api": {
@@ -328,7 +328,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        200,
+        340,
         -656
       ],
       "credentials": {
@@ -349,7 +349,7 @@
       "type": "n8n-nodes-base.splitOut",
       "typeVersion": 1,
       "position": [
-        420,
+        560,
         -656
       ]
     }
@@ -359,11 +359,6 @@
     "Schedule: alle 15 Min": {
       "main": [
         [
-          {
-            "node": "Graph: Ungelesene Mails",
-            "type": "main",
-            "index": 0
-          },
           {
             "node": "OneDrive: Ordner auflösen",
             "type": "main",
@@ -476,6 +471,17 @@
         [
           {
             "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OneDrive: Ordner auflösen": {
+      "main": [
+        [
+          {
+            "node": "Graph: Ungelesene Mails",
             "type": "main",
             "index": 0
           }
