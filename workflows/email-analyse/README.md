@@ -11,10 +11,14 @@ Datei: `Email_Analyse.json` · Status im Export: **aktiv**
 ## Ablauf
 
 ```
-Microsoft Outlook Trigger  (Postfach-Ordner, ungelesen, Poll: jede Minute)
+Schedule  (alle 15 Min)
         ├─────────────▶ OneDrive: Ordner auflösen  (ID von …/Rechnungen per Pfad)
         ↓
-Get many attachments       (alle Anhänge der getriggerten Mail)
+Graph: Ungelesene Mails    (Inbox, isRead=false UND hasAttachments=true)
+        ↓
+Mail je Item               (Split Out: ein Item pro Nachricht)
+        ↓
+Get many attachments       (alle Anhänge der Mail)
         ↓
 If  ── PDF & > 10 KB? ──────── nein ─▶ Ende (Mail bleibt ungelesen/unverändert)
         ↓ ja
@@ -39,9 +43,11 @@ Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 
 | # | Knoten | Typ | Funktion |
 |---|---|---|---|
-| 1 | Microsoft Outlook Trigger | Outlook Trigger | Pollt jede Minute einen festen Postfach-Ordner, nur **ungelesene** Nachrichten |
-| – | OneDrive: Ordner auflösen | HTTP (Graph) | Parallel ab Trigger: ermittelt die ID des Zielordners `…/Rechnungen` per Pfad |
-| 2 | Get many attachments | Outlook | Holt alle Anhänge (`messageAttachment / getAll`) der getriggerten Mail |
+| 1 | Schedule: alle 15 Min | Schedule | Startet den Sweep alle 15 Minuten |
+| 1b | Graph: Ungelesene Mails | HTTP (Graph) | Holt **alle** ungelesenen Inbox-Mails **mit Anhang** (`$filter=isRead eq false and hasAttachments eq true`) |
+| 1c | Mail je Item | Split Out | Zerlegt die `value`-Liste in ein Item pro Nachricht |
+| – | OneDrive: Ordner auflösen | HTTP (Graph) | Parallel ab Schedule: ermittelt die ID des Zielordners `…/Rechnungen` per Pfad |
+| 2 | Get many attachments | Outlook | Holt alle Anhänge (`messageAttachment / getAll`) der Mail |
 | 3 | If | If | Filter: `contentType` enthält `application/pdf` **und** `size > 10000` Bytes |
 | 4 | Download an attachment | Outlook | Lädt den Anhang als Binary `data` herunter |
 | 5 | If1 | If | „rechnung"/„invoice" (case-insensitive) in **Betreff, E-Mail-Text oder Anhang-Dateiname** |
@@ -75,7 +81,8 @@ einer anderen Umgebung angepasst werden:
 
 | Wert | Knoten | Hinweis |
 |---|---|---|
-| Outlook-Quellordner-ID (`foldersToInclude`) | Trigger | Postfach-Ordner, der überwacht wird |
+| Postfach-Ordner (Quelle) | Graph: Ungelesene Mails | aktuell **Inbox** (`/me/mailFolders/inbox/messages`) |
+| Sweep-Intervall | Schedule: alle 15 Min | wie oft der Posteingang geprüft wird |
 | Outlook-Zielordner-ID (`folderId`) | Move a message | Zielordner für verarbeitete Rechnungen |
 | OneDrive-Zielordner (Pfad) | OneDrive: Ordner auflösen | `BLBoardSolutionsGmbH/Rechnungen` im persönlichen OneDrive – per Graph zur ID aufgelöst |
 | Empfänger der Benachrichtigung | Send a message | aktuell `wolfgang.baierl@blboardsolutions.de` |
@@ -108,3 +115,11 @@ Beim Import in eine andere n8n-Instanz die Credentials neu zuweisen.
   (idempotent, aber die Benachrichtigung kann mehrfach kommen).
 - Der Name „Email_Analyse" ist historisch; funktional handelt es sich um eine
   Rechnungs-Archivierung.
+
+### Warum Schedule-Sweep statt Outlook-Poll-Trigger
+Ursprünglich war ein `microsoftOutlookTrigger` (Poll) im Einsatz. Dieser feuert
+**nur für neu eintreffende** Mails – ein bereits im Postfach liegender
+ungelesener Bestand (z. B. eine Rechnung von vor Wochen) wird **nie rückwirkend**
+verarbeitet. Da die Anforderung lautet „**alle** ungelesenen Mails prüfen",
+holt jetzt ein Schedule-Sweep über die Graph-API aktiv alle ungelesenen
+Inbox-Mails mit Anhang – inklusive Bestand.

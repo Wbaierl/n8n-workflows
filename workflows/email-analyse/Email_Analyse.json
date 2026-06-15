@@ -3,43 +3,11 @@
   "nodes": [
     {
       "parameters": {
-        "pollTimes": {
-          "item": [
-            {
-              "mode": "everyMinute"
-            }
-          ]
-        },
-        "filters": {
-          "foldersToInclude": [
-            "AQMkADM0NzFkNDAzLTMxNDItNGNhOC1hZDQyLTcxM2Y0ZDdmYmFiNQAuAAADosScSFkDYUG7FZOJbLMzpgEAids1UVQBH0GRdF6SMZxTjgAAAgEMAAAA"
-          ],
-          "readStatus": "unread"
-        },
-        "options": {}
-      },
-      "type": "n8n-nodes-base.microsoftOutlookTrigger",
-      "typeVersion": 1,
-      "position": [
-        -16,
-        -656
-      ],
-      "id": "38e0ce4a-3de7-426c-ba04-09f173f94214",
-      "name": "Microsoft Outlook Trigger",
-      "credentials": {
-        "microsoftOutlookOAuth2Api": {
-          "id": "yGyJLxRrxa4zgBmg",
-          "name": "Microsoft Outlook account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "resource": "messageAttachment",
         "operation": "getAll",
         "messageId": {
           "__rl": true,
-          "value": "={{ $('Microsoft Outlook Trigger').item.json.id }}",
+          "value": "={{ $('Mail je Item').item.json.id }}",
           "mode": "id"
         },
         "returnAll": true,
@@ -68,7 +36,7 @@
         "operation": "download",
         "messageId": {
           "__rl": true,
-          "value": "={{ $('Microsoft Outlook Trigger').item.json.id }}",
+          "value": "={{ $('Mail je Item').item.json.id }}",
           "mode": "id"
         },
         "attachmentId": {
@@ -141,7 +109,7 @@
         "operation": "update",
         "messageId": {
           "__rl": true,
-          "value": "={{ $node[\"Microsoft Outlook Trigger\"].json[\"id\"] }}",
+          "value": "={{ $('Mail je Item').item.json[\"id\"] }}",
           "mode": "id"
         },
         "updateFields": {
@@ -166,7 +134,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const messageId = $('Microsoft Outlook Trigger').item.json.id;\n\nreturn $input.all();"
+        "jsCode": "const messageId = $('Mail je Item').item.json.id;\n\nreturn $input.all();"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -195,7 +163,7 @@
                 "operation": "true",
                 "singleValue": true
               },
-              "leftValue": "={{ /rechnung|invoice/i.test( ($('Microsoft Outlook Trigger').item.json.subject || '') + ' ' + ($('Microsoft Outlook Trigger').item.json.bodyPreview || '') + ' ' + ((($('Microsoft Outlook Trigger').item.json.body || {}).content) || '') + ' ' + ($json.name || '') ) }}",
+              "leftValue": "={{ /rechnung|invoice/i.test( ($('Mail je Item').item.json.subject || '') + ' ' + ($('Mail je Item').item.json.bodyPreview || '') + ' ' + ((($('Mail je Item').item.json.body || {}).content) || '') + ' ' + ($json.name || '') ) }}",
               "rightValue": ""
             }
           ]
@@ -214,8 +182,8 @@
     {
       "parameters": {
         "toRecipients": "wolfgang.baierl@blboardsolutions.de",
-        "subject": "=📄 Neue Rechnung eingegangen: {{ $('Microsoft Outlook Trigger').item.json.subject }}",
-        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $('Microsoft Outlook Trigger').item.json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $('Microsoft Outlook Trigger').item.json.from }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
+        "subject": "=📄 Neue Rechnung eingegangen: {{ $('Mail je Item').item.json.subject }}",
+        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $('Mail je Item').item.json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $('Mail je Item').item.json.from.emailAddress.address }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
         "additionalFields": {
           "bodyContentType": "html"
         }
@@ -241,7 +209,7 @@
         "operation": "move",
         "messageId": {
           "__rl": true,
-          "value": "={{ $node[\"Microsoft Outlook Trigger\"].json[\"id\"] }}",
+          "value": "={{ $('Mail je Item').item.json[\"id\"] }}",
           "mode": "id"
         },
         "folderId": {
@@ -268,7 +236,7 @@
     },
     {
       "parameters": {
-        "fileName": "={{ $now.format('yyyy-MM') }}_{{ $node[\"Microsoft Outlook Trigger\"].json[\"from\"][\"emailAddress\"][\"address\"] }}_{{ $json[\"name\"] }}",
+        "fileName": "={{ $now.format('yyyy-MM') }}_{{ $('Mail je Item').item.json[\"from\"][\"emailAddress\"][\"address\"] }}_{{ $json[\"name\"] }}",
         "parentId": "={{ $('OneDrive: Ordner auflösen').first().json.id }}",
         "binaryData": true
       },
@@ -309,20 +277,117 @@
           "name": "Microsoft Drive account"
         }
       }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "schedule-sweep",
+      "name": "Schedule: alle 15 Min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -16,
+        -656
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOutlookOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "$filter",
+              "value": "isRead eq false and hasAttachments eq true"
+            },
+            {
+              "name": "$select",
+              "value": "id,subject,from,bodyPreview,body,hasAttachments,receivedDateTime"
+            },
+            {
+              "name": "$top",
+              "value": "50"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "graph-unread-mails",
+      "name": "Graph: Ungelesene Mails",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        -656
+      ],
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "yGyJLxRrxa4zgBmg",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "value",
+        "include": "noOtherFields",
+        "options": {}
+      },
+      "id": "split-mails",
+      "name": "Mail je Item",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        420,
+        -656
+      ]
     }
   ],
   "pinData": {},
   "connections": {
-    "Microsoft Outlook Trigger": {
+    "Schedule: alle 15 Min": {
       "main": [
         [
           {
-            "node": "Get many attachments",
+            "node": "Graph: Ungelesene Mails",
             "type": "main",
             "index": 0
           },
           {
             "node": "OneDrive: Ordner auflösen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Graph: Ungelesene Mails": {
+      "main": [
+        [
+          {
+            "node": "Mail je Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail je Item": {
+      "main": [
+        [
+          {
+            "node": "Get many attachments",
             "type": "main",
             "index": 0
           }
