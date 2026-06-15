@@ -33,9 +33,9 @@ Stamp: Mail-Daten          (message_id, Betreff, Absender je Item festschreiben)
         ↓
 Dedupe je Mail             (eine Zeile pro Nachricht – verhindert Mehrfach-Move)
         ↓
-Update a message           (Mail als gelesen markieren)
-        ↓
-Move a message             (in Zielordner verschieben; fehlertolerant)
+Move a message             (in Zielordner verschieben; bei Fehler → Ende, bleibt ungelesen)
+        ↓ (nur bei Erfolg)
+Update a message           (als gelesen markieren – mit NEUER ID aus der Move-Antwort)
         ↓
 Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 ```
@@ -57,8 +57,8 @@ Send a message             (HTML-Benachrichtigung an wolfgang.baierl@…)
 | 6 | Upload a file | OneDrive | Lädt die Datei in den aufgelösten OneDrive-Ordner `…/Rechnungen` hoch |
 | 7a | Stamp: Mail-Daten | Set | Schreibt `message_id`, `subject`, `from_address` je Item fest (entkoppelt von Paired-Item) |
 | 7b | Dedupe je Mail | Code | Reduziert auf **eine Zeile pro Nachricht** (`message_id`) → Postfach-Aktionen laufen je Mail nur einmal |
-| 8 | Update a message | Outlook | Setzt die Mail auf **gelesen** (`isRead: true`), `messageId` aus `message_id` |
-| 9 | Move a message | Outlook | Verschiebt die Mail in den festen Zielordner; `onError: continue` (überspringt bereits verschobene) |
+| 8 | Move a message | Outlook | Verschiebt die Mail (mit `message_id`) in den Zielordner. Bei Fehler → **Error-Output** → Ende (Mail bleibt **ungelesen**) |
+| 9 | Update a message | Outlook | **Erst nach** erfolgreichem Move: Mail auf **gelesen** (`isRead: true`); `messageId` = **neue** ID aus der Move-Antwort (`$json.id`) |
 | 10 | Send a message | Outlook | HTML-Benachrichtigung „📄 Neue Rechnung eingegangen" mit Betreff/Absender/Datum |
 
 ### Filterlogik
@@ -114,6 +114,10 @@ Beim Import in eine andere n8n-Instanz die Credentials neu zuweisen.
 
 - Der Code-Node (7) ist aktuell nur eine Durchreiche – Platz für künftige Logik
   (z. B. Metadaten extrahieren, in Buchhaltung/Notion eintragen).
+- **Reihenfolge bewusst:** Erst wird verschoben, **dann** als gelesen markiert.
+  Scheitert der Move, geht das Item in den Error-Output (Ende) – die Mail bleibt
+  **ungelesen** und wird beim nächsten Sweep erneut versucht. Da der Move eine
+  neue Message-ID vergibt, nutzt „Update" die ID aus der Move-Antwort.
 - Mehrere PDF-Anhänge in einer Mail: **jeder** PDF wird auf OneDrive geladen,
   aber „gelesen/verschieben/Benachrichtigung" laufen dank **Dedupe je Mail** nur
   **einmal pro Nachricht**. (Ohne Dedupe lief der zweite Move auf eine bereits

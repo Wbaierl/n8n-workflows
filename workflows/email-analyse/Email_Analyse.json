@@ -109,7 +109,7 @@
         "operation": "update",
         "messageId": {
           "__rl": true,
-          "value": "={{ $json.message_id }}",
+          "value": "={{ $json.id }}",
           "mode": "id"
         },
         "updateFields": {
@@ -182,8 +182,8 @@
     {
       "parameters": {
         "toRecipients": "wolfgang.baierl@blboardsolutions.de",
-        "subject": "=📄 Neue Rechnung eingegangen: {{ $json.subject }}",
-        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $json.from_address }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
+        "subject": "=📄 Neue Rechnung eingegangen: {{ $('Dedupe je Mail').item.json.subject }}",
+        "bodyContent": "=<h2>📄 Neue Rechnung eingegangen</h2>\n\n<table>\n  <tr>\n    <td><strong>Betreff:</strong></td>\n    <td>{{ $('Dedupe je Mail').item.json.subject }}</td>\n  </tr>\n  <tr>\n    <td><strong>Von:</strong></td>\n    <td>{{ $('Dedupe je Mail').item.json.from_address }}</td>\n  </tr>\n  <tr>\n    <td><strong>Datum:</strong></td>\n    <td>{{ $now.toFormat('dd.MM.yyyy HH:mm') }}</td>\n  </tr>\n</table>\n\n<br>\n<p>✅ Rechnung wurde auf OneDrive gespeichert.</p>",
         "additionalFields": {
           "bodyContentType": "html"
         }
@@ -233,7 +233,7 @@
           "name": "Microsoft Outlook account"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueErrorOutput"
     },
     {
       "parameters": {
@@ -463,7 +463,7 @@
       "main": [
         [
           {
-            "node": "Move a message",
+            "node": "Send a message",
             "type": "main",
             "index": 0
           }
@@ -485,11 +485,12 @@
       "main": [
         [
           {
-            "node": "Send a message",
+            "node": "Update a message",
             "type": "main",
             "index": 0
           }
-        ]
+        ],
+        []
       ]
     },
     "Upload a file": {
@@ -529,7 +530,7 @@
       "main": [
         [
           {
-            "node": "Update a message",
+            "node": "Move a message",
             "type": "main",
             "index": 0
           }
