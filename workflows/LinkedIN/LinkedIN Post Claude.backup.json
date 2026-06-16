@@ -75,7 +75,7 @@
             {
               "key": "Vorlagen|title",
               "condition": "equals",
-              "titleValue": "={{ String($('CP_Read').item.json.property_typ || '').trim() }}"
+              "titleValue": "={{ $('CP_Read').item.json.property_type.trim() }}"
             }
           ]
         },
@@ -117,7 +117,7 @@
             {
               "id": "d0e621ad-e113-40ee-b1d5-b19cf45cb0ed",
               "name": "typ",
-              "value": "={{ $('CP_Read').item.json.property_typ }}",
+              "value": "={{ $('CP_Read').item.json.property_type }}",
               "type": "string"
             },
             {
@@ -305,41 +305,6 @@
           "name": "Notion account"
         }
       }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose",
-            "version": 3
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "typ-set",
-              "leftValue": "={{ $json.property_typ }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            }
-          ]
-        },
-        "looseTypeValidation": true,
-        "options": {}
-      },
-      "id": "guard-typ-gesetzt",
-      "name": "Guard: Typ gesetzt?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        8176,
-        2992
-      ]
     }
   ],
   "pinData": {},
@@ -359,7 +324,7 @@
       "main": [
         [
           {
-            "node": "Guard: Typ gesetzt?",
+            "node": "TPL_Read",
             "type": "main",
             "index": 0
           }
@@ -419,18 +384,6 @@
             "index": 0
           }
         ]
-      ]
-    },
-    "Guard: Typ gesetzt?": {
-      "main": [
-        [
-          {
-            "node": "TPL_Read",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
       ]
     }
   },
