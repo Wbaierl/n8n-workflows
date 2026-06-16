@@ -132,3 +132,35 @@ ungelesener Bestand (z. B. eine Rechnung von vor Wochen) wird **nie rückwirkend
 verarbeitet. Da die Anforderung lautet „**alle** ungelesenen Mails prüfen",
 holt jetzt ein Schedule-Sweep über die Graph-API aktiv alle ungelesenen
 Inbox-Mails mit Anhang – inklusive Bestand.
+
+---
+
+## Abhängigkeiten
+
+- **Credentials:** Microsoft Outlook OAuth2 (`microsoftOutlookOAuth2Api`, Scope u. a. `Mail.Read`, `Mail.ReadWrite`), Microsoft OneDrive OAuth2 (`microsoftOneDriveOAuth2Api`, `Files.ReadWrite`)
+- **Sub-Workflows:** keine
+- **Externe Systeme:**
+  - Microsoft Graph (Mail-Abruf, Verschieben, Gelesen-Markieren, Versand)
+  - OneDrive for Business (Ablage der Rechnungs-PDFs unter `…/BLBoardSolutionsGmbH/Rechnungen`)
+
+## Testfälle
+
+> Testdaten synthetisch halten – z. B. Absender `rechnung@example.com`, Dummy-PDF.
+
+| # | Szenario | Erwartetes Ergebnis | Status |
+|---|---|---|---|
+| 1 | Ungelesene Mail, Betreff „Rechnung", 1 PDF-Anhang (> 10 KB) | PDF in OneDrive, Mail verschoben, dann gelesen, 1 Benachrichtigung | ⏳ offen |
+| 2 | Ungelesene Mail, „Invoice" nur im **Dateinamen** des Anhangs | wird verarbeitet (Treffer per Dateiname) | ⏳ offen |
+| 3 | Ungelesene Mail mit **mehreren** PDF-Anhängen | jeder PDF hochgeladen, Mail **einmal** verschoben/gelesen, 1 Benachrichtigung | ⏳ offen |
+| 4 | Mail ohne Rechnungs-Stichwort | keine Verarbeitung, bleibt ungelesen | ⏳ offen |
+| 5 | Anhang ist kein PDF / < 10 KB | herausgefiltert, keine Verarbeitung | ⏳ offen |
+| 6 | Move schlägt fehl (z. B. Ordnerrecht) | Item → Error-Output, Mail bleibt **ungelesen**, kein Mark-Read | ⏳ offen |
+| 7 | Bestand: seit Wochen ungelesene Rechnung | wird beim nächsten Sweep verarbeitet | ⏳ offen |
+
+## Änderungshistorie
+
+| Datum | Version | Beschreibung |
+|---|---|---|
+| 2026-06-15 | v1.0 | Erstimport (Poll-Trigger, Betreff-Filter, fester OneDrive-Ordner) |
+| 2026-06-15 | v1.1 | Treffer in Betreff/Text/Dateiname; OneDrive-Zielordner per Pfad aufgelöst |
+| 2026-06-15 | v1.2 | Schedule-Sweep statt Poll-Trigger (verarbeitet Bestand); Dedupe je Mail; erst verschieben, dann als gelesen markieren |

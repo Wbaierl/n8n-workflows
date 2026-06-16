@@ -337,3 +337,34 @@ blboardsolutions-agenda-generator/
 └── n8n/
     └── BLBoardSolutions___Agenda_Generator_v3.json  ← n8n-Workflow
 ```
+
+---
+
+## Abhängigkeiten
+
+- **Credentials:** Notion API (`notion_api`), Anthropic API (`anthropicApi`), Microsoft Outlook OAuth2 (`microsoftOutlookOAuth2Api`)
+- **Sub-Workflows:** keine
+- **Externe Systeme:**
+  - Notion (DB Board-Termine, DB Gruppen, DB Kunden)
+  - Agenda-Server auf IONOS-Host (`agenda-server.js` + `generate-agenda.js`, docxtemplater), erreichbar unter `http://172.17.0.1:3001`
+  - Microsoft Outlook (Versand der fertigen Agenda)
+  - Anthropic Claude (Themen-Optimierung)
+
+## Testfälle
+
+> Testdaten synthetisch halten (Dummy-Termine/-Kunden), keine produktiven Daten.
+
+| # | Szenario | Erwartetes Ergebnis | Status |
+|---|---|---|---|
+| 1 | Termin mit verknüpfter Gruppe, aktiven Kunden, Hotseat-Themen | `.docx` erzeugt, Notion auf „Abgeschlossen" + Link, E-Mail mit Anhang | ⏳ offen |
+| 2 | Termin ohne verknüpfte Gruppe (`DB Gruppen` leer) | Stop-Node „Kein Board zugeordnet" | ⏳ offen |
+| 3 | Claude-API nicht erreichbar / Quota | Fallback auf Originaltexte, Workflow läuft durch | ⏳ offen |
+| 4 | Gruppe ohne aktive Kunden | leere Mitgliederliste, `.docx` trotzdem erzeugt | ⏳ offen |
+| 5 | Themenvorschau leer | Zeile in Agenda ausgeblendet | ⏳ offen |
+
+## Änderungshistorie
+
+| Datum | Version | Beschreibung |
+|---|---|---|
+| 2026-06-10 | v3 | Mitglieder über Kette Board-Termine → DB Gruppen → DB Kunden; docx-Erzeugung über Host-Service statt Code-Node |
+| 2026-06-11 | v3.1 | Claude-Themenoptimierung (kurz/präzise, max. 2 Sätze) + Outlook-Versand mit Anhang |
