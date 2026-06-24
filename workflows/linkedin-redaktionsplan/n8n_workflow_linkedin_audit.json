@@ -1,0 +1,202 @@
+{
+  "name": "BLBoardSolutions – LinkedIn Monthly Audit & Content Generation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 25-31 * 1"
+            }
+          ]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Monatlicher Trigger (letzter Montag)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300],
+      "notes": "Läuft jeden Montag zwischen dem 25. und 31. eines Monats → entspricht dem letzten Montag. Uhrzeit: 08:00 Uhr."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/databases/35147c76280280e38851fd4736f81c35/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"filter\": {\n    \"and\": [\n      {\n        \"or\": [\n          { \"property\": \"Status\", \"select\": { \"equals\": \"Veröffentlicht\" } },\n          { \"property\": \"Status\", \"select\": { \"equals\": \"Geplant\" } },\n          { \"property\": \"Status\", \"select\": { \"equals\": \"Erstellt\" } },\n          { \"property\": \"Status\", \"select\": { \"equals\": \"Freigegeben\" } }\n        ]\n      }\n    ]\n  },\n  \"sorts\": [\n    { \"property\": \"Geplant für\", \"direction\": \"ascending\" }\n  ],\n  \"page_size\": 50\n}",
+        "options": {}
+      },
+      "id": "node-notion-query",
+      "name": "Notion: Content Pipeline laden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "notes": "Lädt alle Posts mit Status Veröffentlicht/Geplant/Erstellt/Freigegeben aus der Content Pipeline DB (ID: 35147c76280280e38851fd4736f81c35)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Node: Notion-Daten aufbereiten & Säulen normalisieren ──\n\nconst results = $input.first().json.results || [];\nconst today = new Date().toISOString().split('T')[0];\n\n// 90-Tage-Grenze für \"veröffentlicht\"\nconst cutoff = new Date();\ncutoff.setDate(cutoff.getDate() - 90);\n\n// Säulen-Normalisierung (Umlaut-Varianten → kanonische Form)\nconst saeuleMap = {\n  'Saeule 1 - Persoenliche Erlebnisse': 'Säule 1 – Persönliche Erlebnisse',\n  'Saeule 2 - Tipps und Methoden':      'Säule 2 – Tipps & Methoden',\n  'Saeule 3 - Trends und Markt':        'Säule 3 – Trends & Markt'\n};\n\nfunction normSaeule(s) {\n  return saeuleMap[s] || s || 'NICHT ZUGEORDNET';\n}\n\nfunction prop(page, key, type) {\n  const p = page.properties?.[key];\n  if (!p) return null;\n  switch(type) {\n    case 'title':   return p.title?.map(t => t.plain_text).join('') || '';\n    case 'text':    return p.rich_text?.map(t => t.plain_text).join('') || '';\n    case 'select':  return p.select?.name || '';\n    case 'date':    return p.date?.start || null;\n    case 'number':  return p.number ?? null;\n    case 'checkbox':return p.checkbox ?? false;\n    default:        return null;\n  }\n}\n\nconst alle = results.map(page => ({\n  notion_id:       page.id,\n  titel:           prop(page, 'Titel',          'title'),\n  saeule:          normSaeule(prop(page, 'Säule', 'select')),\n  typ:             prop(page, 'Typ',            'select'),\n  hook:            prop(page, 'Hook',           'text'),\n  kern_inhalt:     prop(page, 'Kern-Inhalt',    'text'),\n  linkedin_post:   prop(page, 'LinkedIn-Post',  'text'),\n  cta:             prop(page, 'CTA',            'text'),\n  hashtags:        prop(page, 'Hashtags',       'text'),\n  board_erwaehnung:prop(page, 'Board-Erwähnung','checkbox'),\n  status:          prop(page, 'Status',         'select'),\n  geplant_fuer:    prop(page, 'Geplant für',    'date'),\n  kw:              prop(page, 'KW',             'number'),\n  impressionen:    prop(page, 'Impressionen',   'number'),\n  likes:           prop(page, 'Likes',          'number'),\n  kommentare:      prop(page, 'Kommentare',     'number'),\n  shares:          prop(page, 'Shares',         'number'),\n  dms_leads:       prop(page, 'DMs / Leads',    'number')\n}));\n\nconst veroeffentlicht = alle.filter(p => {\n  if (p.status !== 'Veröffentlicht') return false;\n  if (!p.geplant_fuer) return true;\n  return new Date(p.geplant_fuer) >= cutoff;\n});\n\nconst geplant = alle.filter(p =>\n  ['Geplant','Erstellt','Freigegeben'].includes(p.status)\n);\n\nreturn [{ json: {\n  audit_datum: today,\n  veroeffentlichte_posts: veroeffentlicht,\n  geplante_posts: geplant,\n  gesamt_geladen: alle.length\n}}];"
+      },
+      "id": "node-prepare-data",
+      "name": "Code: Daten aufbereiten & normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Node: System-Prompt + User-Message zusammenbauen ──\n\nconst data = $input.first().json;\n\nconst SYSTEM_PROMPT = `Du bist Content-Stratege für B2B-Thought-Leadership auf LinkedIn, spezialisiert auf den Algorithmus-Stand 2026 (Interessengraph, Themencluster-Logik, Ranking-Signale: Relevanz + Expertise + Engagement-Qualität).\n\nMARKE & KONTEXT\n- Marke: BLBoardSolutions / Unternehmerboard (Peer-Advisory / Coaching für KMU-Geschäftsführer)\n- Autor: Wolfgang Baierl — erfahrener Unternehmer mit 25+ Jahren in Maschinenbau, Fertigung, Elektronik, Software\n- Zielgruppe: CEOs/Inhaber inhabergeführter KMU, 20–200 MA, DACH, Branchen: Maschinenbau, Fertigung, Elektronik, Software\n- Ton: Peer-Ebene, nicht Berater. Beobachter-Perspektive, nicht Gutachter. Nie belehrend.\n\nDREI CONTENT-SÄULEN\n1. Säule 1 – Persönliche Erlebnisse & Learnings (~40 %): Eigene Geschichten, Fehler, Momente der Klarheit. Ich-Perspektive.\n2. Säule 2 – Tipps & Methoden (~35 %): Praxisnahe Frameworks, LEAN/OKR/KI/Strategie, konkrete Schritte. Kein Lehrbuch-Jargon.\n3. Säule 3 – Trends & Markt (~25 %): KI im Mittelstand, Fachkräftemangel, Marktumbruch. Eigene Meinung, nicht neutrale Zusammenfassung.\nDazu: Unternehmerboard-Spotlight (max. 1 von 4 Posts)\n\nKERN-TONALITÄTSPRINZIPIEN (nicht verhandelbar)\n- Leistung & Aufbau der Zielgruppe würdigen, BEVOR Anpassungsbedarf genannt wird\n- Ursache extern formulieren (Markt, Wandel, Rahmenbedingungen) — nie als internes Defizit\n- Aus eigener Beobachtung sprechen: \"Ich erlebe\", \"Was ich höre\" — keine allgemeingültige Branchendiagnose\n- Post endet mit offener Frage (Einladung) — nie mit Handlungsanweisung oder Warnung\n- Keine Relativierungen (\"Das ist kein Vorwurf\") — wenn Ton stimmt, braucht es das nicht\n\nSTRUKTURPRINZIPIEN (4-Schichten-Modell)\n1. Hook (Zeile 1–2): Zahl / These / konkrete Mittelstands-Situation — kein Engagement-Bait\n2. Substanz: Eigenes Framework / Branchen-Aufschlüsselung / Beobachtung aus 25+ Jahren Praxis\n3. Save-Wert: Speicherbares Asset — Checkliste, 3-Schritte-Logik, Entscheidungsraster, Faustregel\n4. Gesprächsanstoß: Echte, beantwortbare Frage — keine rhetorische Floskel\n\nFORMAT-REGELN\n- 0–2 gezielte Hashtags (Themencluster-Einordnung, nicht Reichweiten-Fishing)\n- Kein externer Link im Body (ggf. in ersten Kommentar)\n- Whitespace aktiv nutzen: kurze Absätze, 1–2 Sätze pro Block\n- Kein generischer KI-Ton (\"In der heutigen schnelllebigen Welt...\", \"Es ist kein Geheimnis...\")\n- Unternehmerboard maximal in 1 von 4 Posts explizit erwähnen\n\nTHEMATISCHE RAHMENBEDINGUNG (in jeden Post einweben)\nDie veränderten Randbedingungen, die eine Anpassung der bisherigen Mittelstands-Erfolgsfaktoren erfordern: Digitalisierung, KI als Produktivitätshebel, globaler Wettbewerb, Automotive-Transformation, Fachkräftemangel, enger Finanzspielraum. Diese Kräfte sind extern — kein Versagen der Unternehmer.\n\nAUFGABE\nAntworte ausschließlich als valides JSON. Kein Markdown, keine Präambel, kein Text außerhalb des JSON-Objekts.`;\n\nconst USER_MESSAGE = `AUFGABE: Führe ein vollständiges LinkedIn Content Audit durch und generiere danach 10 optimierte neue Posts.\n\nAKTUELLES DATUM: ${data.audit_datum}\nGELADENE EINTRÄGE GESAMT: ${data.gesamt_geladen}\n\nVERÖFFENTLICHTE POSTS (letzter 90-Tage-Zeitraum, für Performance-Analyse):\n${JSON.stringify(data.veroeffentlichte_posts, null, 2)}\n\nGEPLANTE POSTS (noch nicht veröffentlicht, für Qualitäts-Audit):\n${JSON.stringify(data.geplante_posts, null, 2)}\n\n---\n\nTEIL A — AUDIT DER GEPLANTEN POSTS\n\nBewerte jeden geplanten Post:\n{\n  \"audit\": [\n    {\n      \"titel\": \"...\",\n      \"saeule_erkannt\": \"Säule 1|Säule 2|Säule 3|Spotlight|UNKLAR\",\n      \"saeule_konsistent\": true,\n      \"pass_fail\": \"PASS|FAIL\",\n      \"schwaeche\": \"...\",\n      \"verbesserung\": \"...\",\n      \"hook_qualitaet\": \"STARK|MITTEL|SCHWACH\",\n      \"save_wert_vorhanden\": true,\n      \"ki_floskeln\": [],\n      \"tonalitaet_ok\": true\n    }\n  ]\n}\n\nTEIL B — GESAMTPLAN-BEFUND\n\n{\n  \"gesamtbefund\": {\n    \"saeulen_verteilung_prozent\": { \"saeule_1\": 0, \"saeule_2\": 0, \"saeule_3\": 0, \"spotlight\": 0, \"unklar\": 0 },\n    \"save_asset_quote_prozent\": 0,\n    \"cluster_drift_risiko\": \"HOCH|MITTEL|NIEDRIG\",\n    \"cluster_drift_begruendung\": \"...\",\n    \"top3_muster_die_reichweite_kosten\": [\"...\", \"...\", \"...\"],\n    \"top3_staerken_ausbauen\": [\"...\", \"...\", \"...\"],\n    \"performance_insight\": \"...\"\n  }\n}\n\nTEIL C — PRIORISIERTE TO-DO-LISTE (max. 5 Punkte)\n\n{\n  \"todo_liste\": [\n    { \"rang\": 1, \"massnahme\": \"...\", \"hebelwirkung\": \"HOCH|MITTEL\", \"begruendung\": \"...\" }\n  ]\n}\n\nTEIL D — 10 NEUE OPTIMIERTE POSTS (vollständig ausformuliert, keine Platzhalter)\n\n{\n  \"neue_posts\": [\n    {\n      \"titel\": \"...\",\n      \"saeule\": \"Säule 1 – Persönliche Erlebnisse|Säule 2 – Tipps & Methoden|Säule 3 – Trends & Markt|Unternehmerboard-Spotlight\",\n      \"typ\": \"Vorher/Nachher|News→Muster→Konsequenz|Problem-Agitate-Solve|SCQA|Before-After-Bridge|Problem-Lösung-Ergebnis|Persönliche Entscheidung → Business-Lektion\",\n      \"hook\": \"...\",\n      \"kern_inhalt\": \"...\",\n      \"linkedin_post\": \"...\",\n      \"cta\": \"...\",\n      \"hashtags\": \"...\",\n      \"board_erwaehnung\": false,\n      \"ziel_branche\": \"Maschinenbau|Fertigung|Elektronik|Software|Alle\",\n      \"save_wert_typ\": \"Checkliste|3-Schritte|Faustregel|Entscheidungsraster|Keiner\"\n    }\n  ]\n}\n\nWICHTIG: Antworte ausschließlich mit einem einzigen validen JSON-Objekt mit den Keys: audit, gesamtbefund, todo_liste, neue_posts. Kein Text außerhalb des JSON.`;\n\nreturn [{ json: {\n  system_prompt: SYSTEM_PROMPT,\n  user_message:  USER_MESSAGE,\n  audit_datum:   data.audit_datum,\n  geplante_posts: data.geplante_posts\n}}];"
+      },
+      "id": "node-build-prompt",
+      "name": "Code: Prompt aufbauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "x-api-key",
+              "value": "={{ $credentials.httpHeaderAuth.value }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"model\": \"claude-sonnet-4-6\",\n  \"max_tokens\": 8000,\n  \"system\": {{ JSON.stringify($json.system_prompt) }},\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.user_message) }}\n    }\n  ]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "node-claude-api",
+      "name": "HTTP: Claude API (Anthropic)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300],
+      "notes": "Credential-Typ: HTTP Header Auth. Header-Name: x-api-key. Header-Value: dein Anthropic API Key. Timeout: 120s (lange Antwort)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Node: Claude-Antwort parsen ──\n\nconst response = $input.first().json;\n\n// Text-Block aus Anthropic-Response extrahieren\nconst contentBlocks = response.content || [];\nconst textBlock = contentBlocks.find(b => b.type === 'text');\n\nif (!textBlock) {\n  throw new Error('Keine Text-Antwort von Claude erhalten. Response: ' + JSON.stringify(response).substring(0, 500));\n}\n\nlet rawText = textBlock.text.trim();\n\n// Markdown-Codeblock-Wrapper entfernen (Fallback)\nrawText = rawText.replace(/^```json\\s*/i, '').replace(/\\s*```$/, '').trim();\n\nlet parsed;\ntry {\n  parsed = JSON.parse(rawText);\n} catch (e) {\n  throw new Error('JSON-Parse-Fehler: ' + e.message + '\\n\\nRaw (erste 800 Zeichen):\\n' + rawText.substring(0, 800));\n}\n\nconst auditItems   = parsed.audit        || [];\nconst gesamtbefund = parsed.gesamtbefund || {};\nconst todoListe    = parsed.todo_liste   || [];\nconst neuePosts    = parsed.neue_posts   || [];\n\n// Stats für Logging\nconsole.log(`Audit: ${auditItems.length} Posts geprüft | Neue Posts: ${neuePosts.length} | ToDos: ${todoListe.length}`);\n\nreturn [{ json: {\n  audit:        auditItems,\n  gesamtbefund: gesamtbefund,\n  todo_liste:   todoListe,\n  neue_posts:   neuePosts,\n  meta: {\n    audit_datum:    $('Code: Prompt aufbauen').first().json.audit_datum,\n    posts_geprueft: auditItems.length,\n    posts_generiert: neuePosts.length\n  }\n}}];"
+      },
+      "id": "node-parse-response",
+      "name": "Code: Claude-Antwort parsen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Node: Neue Posts für Notion vorbereiten ──\n// Erstellt einen Item pro Post mit korrekten Datumsfeldern\n\nconst data = $input.first().json;\nconst neuePosts = data.neue_posts || [];\n\nif (neuePosts.length === 0) {\n  throw new Error('Keine neuen Posts von Claude generiert.');\n}\n\n// Nächsten Montag berechnen\nfunction naechsterMontag() {\n  const heute = new Date();\n  const tag = heute.getDay(); // 0=So, 1=Mo\n  const diff = (tag === 0) ? 1 : (tag === 1 ? 7 : 8 - tag);\n  const montag = new Date(heute);\n  montag.setDate(heute.getDate() + diff);\n  montag.setHours(0, 0, 0, 0);\n  return montag;\n}\n\n// Mo/Mi/Fr-Sequenz generieren\nfunction genDaten(anzahl) {\n  const daten = [];\n  let basis = naechsterMontag();\n  for (let i = 0; i < anzahl; i++) {\n    daten.push(basis.toISOString().split('T')[0]);\n    const tag = basis.getDay();\n    if      (tag === 1) basis.setDate(basis.getDate() + 2); // Mo → Mi\n    else if (tag === 3) basis.setDate(basis.getDate() + 2); // Mi → Fr\n    else if (tag === 5) basis.setDate(basis.getDate() + 3); // Fr → Mo\n    else                basis.setDate(basis.getDate() + 1);\n  }\n  return daten;\n}\n\n// ISO KW berechnen\nfunction getKW(iso) {\n  const d = new Date(iso);\n  d.setHours(12);\n  d.setDate(d.getDate() + 4 - (d.getDay() || 7));\n  const yearStart = new Date(d.getFullYear(), 0, 1);\n  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);\n}\n\nconst daten = genDaten(neuePosts.length);\n\nreturn neuePosts.map((post, i) => ({ json: {\n  titel:            post.titel            || 'Kein Titel',\n  saeule:           post.saeule           || 'Säule 1 – Persönliche Erlebnisse',\n  typ:              post.typ              || '',\n  hook:             post.hook             || '',\n  kern_inhalt:      post.kern_inhalt      || '',\n  linkedin_post:    post.linkedin_post    || '',\n  cta:              post.cta             || '',\n  hashtags:         post.hashtags         || '',\n  board_erwaehnung: post.board_erwaehnung ?? false,\n  geplant_fuer:     daten[i],\n  kw:               getKW(daten[i]),\n  status:           'Geplant',\n  quelle:           'n8n-Monatsgenerierung'\n}}));"
+      },
+      "id": "node-prepare-posts",
+      "name": "Code: Neue Posts für Notion vorbereiten",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={\n  \"parent\": { \"database_id\": \"35147c76-2802-806c-8d73-000bd0731cb7\" },\n  \"properties\": {\n    \"Titel\": {\n      \"title\": [{ \"text\": { \"content\": {{ JSON.stringify($json.titel) }} } }]\n    },\n    \"Säule\": {\n      \"select\": { \"name\": {{ JSON.stringify($json.saeule) }} }\n    },\n    \"Typ\": {\n      \"select\": { \"name\": {{ JSON.stringify($json.typ) }} }\n    },\n    \"Hook\": {\n      \"rich_text\": [{ \"text\": { \"content\": {{ JSON.stringify($json.hook.substring(0, 2000)) }} } }]\n    },\n    \"Kern-Inhalt\": {\n      \"rich_text\": [{ \"text\": { \"content\": {{ JSON.stringify($json.kern_inhalt.substring(0, 2000)) }} } }]\n    },\n    \"LinkedIn-Post\": {\n      \"rich_text\": [{ \"text\": { \"content\": {{ JSON.stringify($json.linkedin_post.substring(0, 2000)) }} } }]\n    },\n    \"CTA\": {\n      \"rich_text\": [{ \"text\": { \"content\": {{ JSON.stringify($json.cta.substring(0, 2000)) }} } }]\n    },\n    \"Hashtags\": {\n      \"rich_text\": [{ \"text\": { \"content\": {{ JSON.stringify($json.hashtags) }} } }]\n    },\n    \"Board-Erwähnung\": {\n      \"checkbox\": {{ $json.board_erwaehnung }}\n    },\n    \"Geplant für\": {\n      \"date\": { \"start\": {{ JSON.stringify($json.geplant_fuer) }} }\n    },\n    \"KW\": {\n      \"number\": {{ $json.kw }}\n    },\n    \"Status\": {\n      \"select\": { \"name\": \"Geplant\" }\n    },\n    \"Quelle\": {\n      \"rich_text\": [{ \"text\": { \"content\": \"n8n-Monatsgenerierung\" } }]\n    }\n  }\n}",
+        "options": {}
+      },
+      "id": "node-notion-create",
+      "name": "Notion: Neuen Post anlegen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 300],
+      "notes": "Läuft für jeden der 10 neuen Posts separat (n8n iteriert automatisch über alle Items vom vorherigen Node)."
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Node: Audit-Zusammenfassung loggen ──\n// Gibt eine lesbare Zusammenfassung aus für das n8n Execution Log\n\nconst parseNode = $('Code: Claude-Antwort parsen').first().json;\nconst g = parseNode.gesamtbefund || {};\nconst todos = parseNode.todo_liste || [];\nconst audit = parseNode.audit || [];\n\nconst failedPosts = audit.filter(a => a.pass_fail === 'FAIL').map(a => a.titel);\nconst passedPosts = audit.filter(a => a.pass_fail === 'PASS').map(a => a.titel);\n\nconst summary = [\n  `=== BLBoardSolutions LinkedIn Audit – ${parseNode.meta?.audit_datum || 'heute'} ===`,\n  ``,\n  `GEPRÜFTE POSTS: ${audit.length} (✅ ${passedPosts.length} PASS | ❌ ${failedPosts.length} FAIL)`,\n  `NEUE POSTS GENERIERT: ${parseNode.neue_posts?.length || 0}`,\n  ``,\n  `SÄULEN-VERTEILUNG:`,\n  `  Säule 1: ${g.saeulen_verteilung_prozent?.saeule_1 || 0}%`,\n  `  Säule 2: ${g.saeulen_verteilung_prozent?.saeule_2 || 0}%`,\n  `  Säule 3: ${g.saeulen_verteilung_prozent?.saeule_3 || 0}%`,\n  `  Spotlight: ${g.saeulen_verteilung_prozent?.spotlight || 0}%`,\n  `  Unklar: ${g.saeulen_verteilung_prozent?.unklar || 0}%`,\n  ``,\n  `SAVE-ASSET-QUOTE: ${g.save_asset_quote_prozent || 0}% (Ziel: ≥50%)`,\n  `CLUSTER-DRIFT-RISIKO: ${g.cluster_drift_risiko || 'n/a'}`,\n  ``,\n  `FAILED POSTS: ${failedPosts.length > 0 ? failedPosts.join(', ') : 'keine'}`,\n  ``,\n  `TOP-3 TO-DOS:`,\n  ...todos.slice(0, 3).map(t => `  ${t.rang}. [${t.hebelwirkung}] ${t.massnahme}`),\n  ``,\n  `PERFORMANCE-INSIGHT:`,\n  `  ${g.performance_insight || 'keine Daten'}`,\n].join('\\n');\n\nconsole.log(summary);\n\nreturn [{ json: { summary, meta: parseNode.meta } }];"
+      },
+      "id": "node-summary-log",
+      "name": "Code: Audit-Zusammenfassung",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, 500],
+      "notes": "Paralleler Branch: Loggt die Audit-Zusammenfassung ins Execution Log. Läuft gleichzeitig mit dem Notion-Create-Node."
+    }
+  ],
+  "connections": {
+    "Monatlicher Trigger (letzter Montag)": {
+      "main": [[{ "node": "Notion: Content Pipeline laden", "type": "main", "index": 0 }]]
+    },
+    "Notion: Content Pipeline laden": {
+      "main": [[{ "node": "Code: Daten aufbereiten & normalisieren", "type": "main", "index": 0 }]]
+    },
+    "Code: Daten aufbereiten & normalisieren": {
+      "main": [[{ "node": "Code: Prompt aufbauen", "type": "main", "index": 0 }]]
+    },
+    "Code: Prompt aufbauen": {
+      "main": [[{ "node": "HTTP: Claude API (Anthropic)", "type": "main", "index": 0 }]]
+    },
+    "HTTP: Claude API (Anthropic)": {
+      "main": [[{ "node": "Code: Claude-Antwort parsen", "type": "main", "index": 0 }]]
+    },
+    "Code: Claude-Antwort parsen": {
+      "main": [
+        [{ "node": "Code: Neue Posts für Notion vorbereiten", "type": "main", "index": 0 }],
+        [{ "node": "Code: Audit-Zusammenfassung", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Neue Posts für Notion vorbereiten": {
+      "main": [[{ "node": "Notion: Neuen Post anlegen", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": ""
+  },
+  "tags": [
+    { "name": "BLBoardSolutions" },
+    { "name": "LinkedIn" },
+    { "name": "Content" }
+  ]
+}
