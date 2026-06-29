@@ -247,7 +247,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.item;\nconst filename = ($('Code: Uploads vorbereiten').item.json.filename) || item.json.filename || 'vortrag.pdf';\nconst newItem = { json: { ...item.json, filename }, binary: {} };\nif (item.binary && item.binary.pdf_binary) {\n  newItem.binary.pdf_binary = {\n    ...item.binary.pdf_binary,\n    fileName: filename,\n    mimeType: item.binary.pdf_binary.mimeType || 'application/octet-stream'\n  };\n}\nreturn [newItem];"
+        "jsCode": "const item = $input.item;\nconst filename = item.json.filename || 'vortrag.pdf';\nconst newItem = { json: item.json, binary: {} };\nif (item.binary && item.binary.pdf_binary) {\n  newItem.binary.pdf_binary = {\n    ...item.binary.pdf_binary,\n    fileName: filename,\n    mimeType: item.binary.pdf_binary.mimeType || 'application/octet-stream'\n  };\n}\nreturn [newItem];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -345,7 +345,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const origData = $('Code: Uploads vorbereiten').item.json;\nconst shareUrl = origData.vortragUrl || '';\n// Persönliche OneDrive-URL: .../personal/<user>/Documents/<PFAD>?<query>  -> Pfad-Adressierung\nconst m = shareUrl.match(/\\/personal\\/[^/]+\\/Documents\\/(.+?)(?:\\?|$)/);\nlet graph_download_url = '', folder_list_url = '', expected_name = '';\nif (m && m[1]) {\n  const fullPath = m[1]; // bereits prozent-kodiert\n  const slash = fullPath.lastIndexOf('/');\n  const parentEnc = slash >= 0 ? fullPath.slice(0, slash) : '';\n  const fileEnc   = slash >= 0 ? fullPath.slice(slash + 1) : fullPath;\n  expected_name = decodeURIComponent(fileEnc);\n  graph_download_url = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + fullPath + ':/content';\n  folder_list_url    = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + parentEnc + ':/children?$select=name,id';\n} else {\n  // Fremd-/Freigabe-Links: Shares-API\n  const enc = 'u!' + Buffer.from(shareUrl).toString('base64').replace(/=+$/,'').replace(/\\//g,'_').replace(/\\+/g,'-');\n  graph_download_url = 'https://graph.microsoft.com/v1.0/shares/' + enc + '/driveItem/content';\n}\nreturn { json: { ...origData, graph_download_url, folder_list_url, expected_name } };"
+        "jsCode": "// HTTP: Confluence Anhang prüfen ersetzt das Item-JSON.\n// Originaldaten aus Code: Uploads vorbereiten holen.\nconst origData = $('Code: Uploads vorbereiten').item.json;\nconst shareUrl = origData.vortragUrl || '';\nconst encoded = 'u!' + Buffer.from(shareUrl).toString('base64')\n  .replace(/=+$/, '').replace(/\\//g, '_').replace(/\\+/g, '-');\nreturn {\n  json: {\n    ...origData,\n    graph_download_url: `https://graph.microsoft.com/v1.0/shares/${encoded}/driveItem/content`\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -383,8 +383,7 @@
           "id": "9Ytar7NmBEFxr6Yz",
           "name": "Microsoft Drive account"
         }
-      },
-      "onError": "continueErrorOutput"
+      }
     },
     {
       "parameters": {
@@ -467,72 +466,6 @@
       "parameters": {
         "mode": "runOnceForEachItem",
         "jsCode": "// Prüfen-Response mit Originaldaten aus Code: Uploads vorbereiten zusammenführen\n// So sind themenIndex und andere Felder nach dem IF-Node noch verfügbar\nconst prüfenRes = $input.item.json;\nconst orig = $('Code: Uploads vorbereiten').item.json;\n\nconst prüfenResults = prüfenRes.results || [];\nconst base = 'https://blboardsolutions.atlassian.net/wiki';\nvar existingUrl = '';\nif (prüfenResults.length > 0 && prüfenResults[0]._links) {\n  existingUrl = prüfenResults[0]._links.download\n    ? base + prüfenResults[0]._links.download\n    : '';\n}\n\nreturn { json: {\n  // Originaldaten\n  thema: orig.thema,\n  datum: orig.datum,\n  vortragender: orig.vortragender,\n  vortragUrl: orig.vortragUrl,\n  summary: orig.summary || '',\n  themenIndex: orig.themenIndex,\n  vortragPageId: orig.vortragPageId,\n  filename: orig.filename,\n  needsUpload: orig.needsUpload,\n  spaceKey: orig.spaceKey || '',\n  // Prüfen-Ergebnis\n  _attachment_found: prüfenResults.length > 0,\n  _existing_url: existingUrl\n} };"
-      }
-    },
-    {
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $('Code: Graph Download-URL').item.json.folder_list_url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
-        "options": {}
-      },
-      "id": "bt-fallback-list",
-      "name": "HTTP: Ordner auflisten",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2020,
-        620
-      ],
-      "credentials": {
-        "microsoftOneDriveOAuth2Api": {
-          "id": "9Ytar7NmBEFxr6Yz",
-          "name": "Microsoft Drive account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const meta = $('Code: Graph Download-URL').item.json;\nconst origData = $('Code: Uploads vorbereiten').item.json;\nconst expected = (meta.expected_name || '');\nconst parentEnc = (meta.folder_list_url || '').split('/me/drive/root:/')[1].split(':/children')[0];\nconst files = ($input.item.json.value || []).filter(f => f.name);\nfunction stem(s){ return s.replace(/\\.[a-z0-9]+$/i,'').toLowerCase().trim(); }\nconst exp = stem(expected);\nlet best=null, bestScore=-1;\nfor (const f of files){\n  const cand = stem(f.name);\n  let i=0; while(i<cand.length && i<exp.length && cand[i]===exp[i]) i++;\n  let score=i;\n  if (cand.startsWith(exp) || exp.startsWith(cand)) score+=100;\n  if (score>bestScore){ bestScore=score; best=f; }\n}\nconst minPrefix = Math.min(10, Math.floor(exp.length*0.5));\nif (!best || bestScore < minPrefix){\n  throw new Error('Self-Healing: keine passende Datei fuer \"' + expected + '\" im Ordner (vorhanden: ' + files.map(f=>f.name).join(' | ') + ')');\n}\nconst matchedUrl = 'https://graph.microsoft.com/v1.0/me/drive/root:/' + parentEnc + '/' + encodeURIComponent(best.name) + ':/content';\nreturn { json: { ...origData, graph_download_url: matchedUrl, matched_name: best.name, expected_name: expected } };"
-      },
-      "id": "bt-fallback-match",
-      "name": "Code: Datei matchen",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2200,
-        620
-      ]
-    },
-    {
-      "parameters": {
-        "url": "={{ $json.graph_download_url }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
-        "options": {
-          "response": {
-            "response": {
-              "responseFormat": "file",
-              "outputPropertyName": "pdf_binary"
-            }
-          }
-        }
-      },
-      "id": "bt-fallback-dl",
-      "name": "HTTP: Datei laden (Fallback)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        2380,
-        620
-      ],
-      "credentials": {
-        "microsoftOneDriveOAuth2Api": {
-          "id": "9Ytar7NmBEFxr6Yz",
-          "name": "Microsoft Drive account"
-        }
       }
     }
   ],
@@ -728,13 +661,6 @@
             "type": "main",
             "index": 0
           }
-        ],
-        [
-          {
-            "node": "HTTP: Ordner auflisten",
-            "type": "main",
-            "index": 0
-          }
         ]
       ]
     },
@@ -783,39 +709,6 @@
         [
           {
             "node": "IF: Anhang bereits vorhanden?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP: Ordner auflisten": {
-      "main": [
-        [
-          {
-            "node": "Code: Datei matchen",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code: Datei matchen": {
-      "main": [
-        [
-          {
-            "node": "HTTP: Datei laden (Fallback)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP: Datei laden (Fallback)": {
-      "main": [
-        [
-          {
-            "node": "Code: Datei umbenennen",
             "type": "main",
             "index": 0
           }
